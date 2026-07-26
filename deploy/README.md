@@ -49,14 +49,21 @@ pod niet omhoog en blijft de vorige versie staan.
 
 ## Uitgaand internet
 
-De api haalt het weer (Open-Meteo) en de route (OSRM) van publieke diensten. Die
-hebben geen sleutel nodig, maar de `depart-api`-pod heeft er wel uitgaand
-internet voor nodig. Staat dat dicht, zet dan `EXTERN_ENABLED` in
-`depart-config` op `"false"`: de app blijft dan gewoon werken en de schermen
-melden dat er geen weer- of routegegevens zijn.
+De api haalt het weer (Open-Meteo), de route (OSRM) en adres-suggesties
+(Photon) van publieke diensten. Die hebben geen sleutel nodig, maar de
+`depart-api`-pod heeft er wel uitgaand internet voor nodig. Staat dat dicht,
+zet dan `EXTERN_ENABLED` in `depart-config` op `"false"`: de app blijft dan
+gewoon werken en de schermen melden dat er geen weer-, route- of
+adresgegevens zijn.
+
+De frontend haalt daarnaast zelf kaarttegels op bij `tile.openstreetmap.org` —
+dat gaat buiten de api om, rechtstreeks vanuit de browser. Staat het netwerk
+van de gebruikers dicht voor dat domein, dan blijft de kaart leeg maar de rest
+van de app werkt door.
 
 De adressen staan in de ConfigMap en zijn te vervangen door een eigen instantie
-(bijvoorbeeld een OSRM in het cluster) zonder de images opnieuw te bouwen.
+(bijvoorbeeld een OSRM of Photon in het cluster) zonder de images opnieuw te
+bouwen.
 
 ## Rechten op het documentenvolume
 

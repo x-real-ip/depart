@@ -22,8 +22,10 @@ export interface TripRow {
   tol_kosten: number | null;
   thuisplaats: string | null;
   thuisland: string | null;
+  thuisadres: string | null;
   thuis_lat: number | null;
   thuis_lon: number | null;
+  bestemming_adres: string | null;
   bestemming_lat: number | null;
   bestemming_lon: number | null;
   created_at: Date;
@@ -83,7 +85,8 @@ export interface ContactRow {
 export const tripColumns = `
   id, naam, bestemming, land, regio, vertrekdatum, terugdatum,
   camping_naam, plaatsnummer, plaats_info, afstand_km, rijtijd_min, tol_kosten,
-  thuisplaats, thuisland, thuis_lat, thuis_lon, bestemming_lat, bestemming_lon,
+  thuisplaats, thuisland, thuisadres, thuis_lat, thuis_lon,
+  bestemming_adres, bestemming_lat, bestemming_lon,
   created_at, updated_at
 `;
 
@@ -104,6 +107,14 @@ export function toTrip(row: TripRow) {
     tolKosten: row.tol_kosten,
     thuisplaats: row.thuisplaats,
     thuisland: row.thuisland,
+    thuisAdres: row.thuisadres,
+    bestemmingAdres: row.bestemming_adres,
+    // Geverifieerd betekent: er zijn coördinaten bij dit adres, via een
+    // gekozen suggestie of eerder al opgezocht. Puur informatief voor de
+    // instellingen — bij het bewerken houdt de app zelf de verificatiestatus
+    // bij totdat er weer wordt opgeslagen.
+    thuisAdresGeverifieerd: row.thuis_lat !== null,
+    bestemmingAdresGeverifieerd: row.bestemming_lat !== null,
     /** Aantal nachten op de camping, uit de datums berekend. */
     nachten: nachtenTussen(row.vertrekdatum, row.terugdatum),
   };
@@ -140,6 +151,7 @@ export function toStop(row: StopRow) {
     overnachting: row.overnachting,
     adres: row.adres,
     nachten: row.nachten,
+    adresGeverifieerd: row.lat !== null,
   };
 }
 

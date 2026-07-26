@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AdresVeld } from "../components/AdresVeld.tsx";
 import { INVOER_STIJL, Kaart, Knop, Melding, NogInvullen, Veld } from "../components/ui.tsx";
 import { api, type TripMetReizigers } from "../lib/api.ts";
 import { BEKENDE_LANDEN } from "../lib/format.ts";
@@ -28,10 +29,16 @@ export function ReisAanmaken({
   const [regio, setRegio] = useState("");
   const [thuisplaats, setThuisplaats] = useState("");
   const [thuisland, setThuisland] = useState("Nederland");
+  const [thuisAdres, setThuisAdres] = useState("");
+  const [thuisCoord, setThuisCoord] = useState<{ lat: number; lon: number } | null>(null);
   const [vertrekdatum, setVertrekdatum] = useState("");
   const [terugdatum, setTerugdatum] = useState("");
   const [campingNaam, setCampingNaam] = useState("");
   const [plaatsnummer, setPlaatsnummer] = useState("");
+  const [bestemmingAdres, setBestemmingAdres] = useState("");
+  const [bestemmingCoord, setBestemmingCoord] = useState<{ lat: number; lon: number } | null>(
+    null,
+  );
   const [reizigers, setReizigers] = useState<NieuweReiziger[]>([{ naam: "", geboortejaar: "" }]);
   const [fout, setFout] = useState<string | null>(null);
   const [bezig, setBezig] = useState(false);
@@ -61,10 +68,16 @@ export function ReisAanmaken({
         regio: regio.trim() === "" ? null : regio.trim(),
         thuisplaats: thuisplaats.trim(),
         thuisland: thuisland.trim() === "" ? null : thuisland.trim(),
+        thuisAdres: thuisAdres.trim() === "" ? null : thuisAdres.trim(),
+        thuisLat: thuisCoord?.lat ?? null,
+        thuisLon: thuisCoord?.lon ?? null,
         vertrekdatum,
         terugdatum,
         campingNaam: campingNaam.trim() === "" ? null : campingNaam.trim(),
         plaatsnummer: plaatsnummer.trim() === "" ? null : plaatsnummer.trim(),
+        bestemmingAdres: bestemmingAdres.trim() === "" ? null : bestemmingAdres.trim(),
+        bestemmingLat: bestemmingCoord?.lat ?? null,
+        bestemmingLon: bestemmingCoord?.lon ?? null,
         reizigers: reizigers
           .filter((reiziger) => reiziger.naam.trim() !== "")
           .map((reiziger) => ({
@@ -195,6 +208,22 @@ export function ReisAanmaken({
               De plaatsnaam is genoeg — een straat hoeft niet. Hij wordt gebruikt om de
               rijafstand en het weer thuis op te zoeken.
             </p>
+
+            <AdresVeld
+              label="Preciezer thuisadres"
+              hint="Optioneel. Voor een nauwkeurigere route en op de kaart."
+              placeholder="Kerkstraat 12, Utrecht"
+              waarde={thuisAdres}
+              geverifieerd={thuisCoord !== null}
+              onWijzig={(tekst) => {
+                setThuisAdres(tekst);
+                setThuisCoord(null);
+              }}
+              onKies={(suggestie) => {
+                setThuisAdres(suggestie.label);
+                setThuisCoord({ lat: suggestie.lat, lon: suggestie.lon });
+              }}
+            />
           </Kaart>
         </div>
 
@@ -219,6 +248,22 @@ export function ReisAanmaken({
                 />
               </Veld>
             </div>
+
+            <AdresVeld
+              label="Adres van de camping"
+              hint="Optioneel. Nauwkeuriger dan de plaatsnaam voor de route en op de kaart."
+              placeholder="Camping Le Belvedere, Annecy"
+              waarde={bestemmingAdres}
+              geverifieerd={bestemmingCoord !== null}
+              onWijzig={(tekst) => {
+                setBestemmingAdres(tekst);
+                setBestemmingCoord(null);
+              }}
+              onKies={(suggestie) => {
+                setBestemmingAdres(suggestie.label);
+                setBestemmingCoord({ lat: suggestie.lat, lon: suggestie.lon });
+              }}
+            />
           </Kaart>
 
           <Kaart className="space-y-3">

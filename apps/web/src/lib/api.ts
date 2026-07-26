@@ -88,6 +88,12 @@ export interface Trip {
   /** Waar de reis begint. Vertrekpunt voor de route en plaats voor het weer thuis. */
   thuisplaats: string | null;
   thuisland: string | null;
+  /** Preciezer, via autocomplete gekozen adres — voor de route en de kaart. */
+  thuisAdres: string | null;
+  bestemmingAdres: string | null;
+  /** Of er coördinaten bij dit adres horen (een gekozen suggestie, of eerder al opgezocht). */
+  thuisAdresGeverifieerd: boolean;
+  bestemmingAdresGeverifieerd: boolean;
   nachten: number;
 }
 
@@ -136,6 +142,8 @@ export interface Stop {
   overnachting: boolean;
   adres: string | null;
   nachten: number | null;
+  /** Of dit adres coördinaten heeft — via een gekozen suggestie. */
+  adresGeverifieerd: boolean;
 }
 
 export interface NieuweStop {
@@ -145,6 +153,20 @@ export interface NieuweStop {
   overnachting: boolean;
   adres: string | null;
   nachten: number | null;
+  lat?: number | null;
+  lon?: number | null;
+}
+
+/** Een adres-suggestie uit de autocomplete: altijd met coördinaten. */
+export interface AdresSuggestie {
+  label: string;
+  straat: string | null;
+  huisnummer: string | null;
+  postcode: string | null;
+  plaats: string | null;
+  land: string | null;
+  lat: number;
+  lon: number;
 }
 
 // --- Actuele reisinformatie ------------------------------------------------
@@ -185,12 +207,26 @@ export interface RouteInfo {
   etappes: RouteEtappe[];
   totaalAfstandKm: number;
   totaalRijtijdMin: number;
+  /** De weg zelf, als [lat, lon]-punten — voor de lijn op de kaart. */
+  geometrie: [number, number][];
+}
+
+export type PuntRol = "thuis" | "overnachting" | "bestemming";
+
+/** Eén punt op de kaart: thuis, een overnachting, of de bestemming. */
+export interface RoutePunt {
+  naam: string;
+  rol: PuntRol;
+  lat: number;
+  lon: number;
 }
 
 export interface RouteAntwoord {
   route: RouteInfo | null;
   reden: string;
   overnachtingen?: number;
+  /** Leeg zolang er geen coördinaten bekend zijn; anders altijd gevuld, ook als de route zelf niet lukte. */
+  punten: RoutePunt[];
 }
 
 /** Melding bij een reden waarom er geen gegevens zijn. */
@@ -247,6 +283,12 @@ export interface NieuweTrip {
   tolKosten?: number | null;
   thuisplaats?: string | null;
   thuisland?: string | null;
+  thuisAdres?: string | null;
+  thuisLat?: number | null;
+  thuisLon?: number | null;
+  bestemmingAdres?: string | null;
+  bestemmingLat?: number | null;
+  bestemmingLon?: number | null;
   reizigers?: { naam: string; geboortejaar: number | null }[];
 }
 
@@ -371,6 +413,14 @@ export const api = {
         afstandKm?: number | null;
         rijtijdMin?: number | null;
       }>,
+  },
+
+  /** Adres-autocomplete voor thuisadres, bestemming en overnachtingen. */
+  adressen: {
+    zoek: (zoekterm: string) =>
+      verzoek("GET", `/api/adressen?q=${encodeURIComponent(zoekterm)}`) as Promise<
+        AdresSuggestie[]
+      >,
   },
 
   noodnummers: {

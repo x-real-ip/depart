@@ -31,6 +31,24 @@ type Reden =
   | "dienst-onbereikbaar"
   | "te-weinig-punten";
 
+/** Eén punt op de kaart: waar het voor staat, plus de coördinaat. */
+interface RoutePunt {
+  naam: string;
+  rol: "thuis" | "overnachting" | "bestemming";
+  lat: number;
+  lon: number;
+}
+
+/** Geeft elk punt zijn rol: eerste is thuis, laatste bestemming, rest overnachting. */
+function metRol(punten: { naam: string; coordinaat: Coordinaat }[]): RoutePunt[] {
+  return punten.map((punt, index) => ({
+    naam: punt.naam,
+    rol: index === 0 ? "thuis" : index === punten.length - 1 ? "bestemming" : "overnachting",
+    lat: punt.coordinaat.lat,
+    lon: punt.coordinaat.lon,
+  }));
+}
+
 /**
  * Zoekt de coördinaten van de bestemming op en bewaart ze bij de reis, zodat
  * de geocoder niet bij elke aanvraag nodig is.
@@ -197,19 +215,28 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
     const id = pathUuid((request.params as { id?: string }).id);
     const trip = await haalTrip(id);
 
-    const leeg = (waarom: Reden) => ({ route: null as RouteInfo | null, reden: waarom });
+    const leeg = (waarom: Reden) => ({
+      route: null as RouteInfo | null,
+      reden: waarom,
+      punten: [] as RoutePunt[],
+    });
 
     const opbouw = await routePunten(trip);
     if ("fout" in opbouw) return leeg(opbouw.fout);
 
+    // De punten (voor de kaart) staan vast zodra de coördinaten bekend zijn,
+    // ook als OSRM zelf niet antwoordt — dan zie je de plekken zonder lijn
+    // ertussen, in plaats van een lege kaart.
+    const punten = metRol(opbouw.punten);
     const route = await haalRoute(opbouw.punten);
-    if (route === null) return leeg("dienst-onbereikbaar");
+    if (route === null) return { route: null, reden: "dienst-onbereikbaar" satisfies Reden, punten };
 
     return {
       route,
       reden: "ok" satisfies Reden,
       /** Aantal overnachtingen dat in de route is meegenomen. */
       overnachtingen: opbouw.punten.length - 2,
+      punten,
     };
   });
 

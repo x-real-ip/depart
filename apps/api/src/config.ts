@@ -37,6 +37,12 @@ export const config = {
     geocodingUrl: process.env.GEOCODING_URL ?? "https://geocoding-api.open-meteo.com/v1/search",
     weatherUrl: process.env.WEATHER_URL ?? "https://api.open-meteo.com/v1/forecast",
     routingUrl: process.env.ROUTING_URL ?? "https://router.project-osrm.org",
+    /**
+     * Voor het adresveld met autocomplete: Photon, gebouwd op OpenStreetMap.
+     * Anders dan de geocoding hierboven (die alleen plaatsnamen kent) vindt
+     * deze ook straten, huisnummers en plekken zoals een camping.
+     */
+    addressAutocompleteUrl: process.env.ADDRESS_AUTOCOMPLETE_URL ?? "https://photon.komoot.io/api/",
     /** Hoe lang een antwoord in het geheugen blijft staan. */
     cacheMinuten: Number(process.env.EXTERN_CACHE_MINUTES ?? 30),
     timeoutMs: Number(process.env.EXTERN_TIMEOUT_MS ?? 8000),
