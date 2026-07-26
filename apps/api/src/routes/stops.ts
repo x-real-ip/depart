@@ -4,7 +4,9 @@ import { toContact, toStop, type ContactRow, type StopRow } from "../types.js";
 import { Fields, NotFoundError, ValidationError, pathUuid } from "../validate.js";
 import { haalTrip } from "./trips.js";
 
-const STOP_KOLOMMEN = `id, trip_id, plaats, tijd, opmerking, volgorde`;
+const STOP_KOLOMMEN = `
+  id, trip_id, plaats, tijd, opmerking, volgorde, overnachting, adres, nachten, lat, lon
+`;
 const CONTACT_KOLOMMEN = `id, trip_id, label, telefoonnummer`;
 
 export const onderwegRoutes: FastifyPluginAsync = async (app) => {
@@ -33,15 +35,21 @@ export const onderwegRoutes: FastifyPluginAsync = async (app) => {
     );
     const volgorde = (laatste?.volgorde ?? -1) + 1;
 
+    const overnachting = fields.has("overnachting") ? fields.boolean("overnachting") : false;
+    const nachten = leesNachten(fields, overnachting);
+
     const row = await queryOne<StopRow>(
-      `INSERT INTO stop (trip_id, plaats, tijd, opmerking, volgorde)
-       VALUES ($1, $2, $3, $4, $5) RETURNING ${STOP_KOLOMMEN}`,
+      `INSERT INTO stop (trip_id, plaats, tijd, opmerking, volgorde, overnachting, adres, nachten)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${STOP_KOLOMMEN}`,
       [
         tripId,
         fields.text("plaats", { max: 120 }),
         fields.optionalTime("tijd"),
         fields.optionalText("opmerking", { max: 500 }),
         volgorde,
+        overnachting,
+        fields.optionalText("adres", { max: 300 }),
+        nachten,
       ],
     );
     reply.code(201);
@@ -59,11 +67,29 @@ export const onderwegRoutes: FastifyPluginAsync = async (app) => {
     const opmerking = fields.has("opmerking")
       ? fields.optionalText("opmerking", { max: 500 })
       : bestaand.opmerking;
+    const adres = fields.has("adres")
+      ? fields.optionalText("adres", { max: 300 })
+      : bestaand.adres;
+    const overnachting = fields.has("overnachting")
+      ? fields.boolean("overnachting")
+      : bestaand.overnachting;
+    const nachten = fields.has("nachten") || fields.has("overnachting")
+      ? leesNachten(fields, overnachting, bestaand.nachten)
+      : bestaand.nachten;
+
+    // Bij een andere plaats of een ander adres kloppen de opgezochte
+    // coördinaten niet meer.
+    const behoudCoordinaten = plaats === bestaand.plaats && adres === bestaand.adres;
 
     const row = await queryOne<StopRow>(
-      `UPDATE stop SET plaats = $2, tijd = $3, opmerking = $4 WHERE id = $1
+      `UPDATE stop
+       SET plaats = $2, tijd = $3, opmerking = $4, adres = $5,
+           overnachting = $6, nachten = $7,
+           lat = CASE WHEN $8 THEN lat ELSE NULL END,
+           lon = CASE WHEN $8 THEN lon ELSE NULL END
+       WHERE id = $1
        RETURNING ${STOP_KOLOMMEN}`,
-      [id, plaats, tijd, opmerking],
+      [id, plaats, tijd, opmerking, adres, overnachting, nachten, behoudCoordinaten],
     );
     return toStop(row!);
   });
@@ -158,6 +184,30 @@ export const onderwegRoutes: FastifyPluginAsync = async (app) => {
     return null;
   });
 };
+
+/**
+ * Een overnachting heeft altijd een aantal nachten; een gewone tussenstop
+ * nooit. Dezelfde regel staat als CHECK in de database, hier levert hij een
+ * leesbare melding op.
+ */
+function leesNachten(fields: Fields, overnachting: boolean, huidig: number | null = null): number | null {
+  if (!overnachting) {
+    // Niet stilzwijgend weggooien: wie hier nachten meestuurt, bedoelt
+    // waarschijnlijk een overnachting en moet dat weten.
+    const meegestuurd = fields.has("nachten") ? fields.optionalNumber("nachten") : null;
+    if (meegestuurd !== null) {
+      throw new ValidationError(
+        "Zet de etappe op overnachting als je een aantal nachten wilt opgeven",
+      );
+    }
+    return null;
+  }
+  const opgegeven = fields.has("nachten")
+    ? fields.optionalNumber("nachten", { min: 1, max: 60 })
+    : huidig;
+  // Wie een overnachting aanzet zonder aantal, bedoelt één nacht.
+  return opgegeven === null ? 1 : Math.round(opgegeven);
+}
 
 /**
  * Een telefoonnummer moet in een tel:-link passen. Cijfers, plus, spaties,

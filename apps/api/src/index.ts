@@ -4,6 +4,7 @@ import { MAX_UPLOAD_BYTES, config } from "./config.js";
 import { pool, waitForDatabase } from "./db.js";
 import { documentRoutes } from "./routes/documents.js";
 import { packItemRoutes } from "./routes/packItems.js";
+import { reisinfoRoutes } from "./routes/reisinfo.js";
 import { onderwegRoutes } from "./routes/stops.js";
 import { tripRoutes } from "./routes/trips.js";
 import { initDocumentsPath } from "./storage.js";
@@ -61,16 +62,10 @@ app.addHook("onRequest", async (request, reply) => {
   return reply.send({ error: "Geen toegang" });
 });
 
-await app.register(
-  async (api) => {
-    await api.register(tripRoutes);
-    await api.register(packItemRoutes);
-    await api.register(onderwegRoutes);
-    await api.register(documentRoutes);
-  },
-  { prefix: "/api" },
-);
-
+// De fout- en niet-gevonden-handlers moeten vóór het registreren van de routes
+// worden gezet. Een child-context van register neemt de handlers over die op dat
+// moment gelden; zet je ze erna, dan gebruikt /api nog de standaardhandler van
+// Fastify en komt de Nederlandse melding nooit bij de app aan.
 app.setNotFoundHandler(async (_request, reply) => {
   reply.code(404);
   return { error: "Dit adres bestaat niet" };
@@ -103,6 +98,17 @@ app.setErrorHandler(async (error, request, reply) => {
   reply.code(status && status < 500 ? status : 500);
   return { error: "Er ging iets mis" };
 });
+
+await app.register(
+  async (api) => {
+    await api.register(tripRoutes);
+    await api.register(packItemRoutes);
+    await api.register(onderwegRoutes);
+    await api.register(documentRoutes);
+    await api.register(reisinfoRoutes);
+  },
+  { prefix: "/api" },
+);
 
 async function start(): Promise<void> {
   await initDocumentsPath();

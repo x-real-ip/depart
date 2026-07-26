@@ -16,7 +16,7 @@ gitops/
     │   ├── persistentvolume.yaml           documentenvolume (iSCSI, RWO)
     │   ├── deployment.yaml                 depart-api + depart-web
     │   ├── service.yaml
-    │   └── httproute.yaml                  depart.lan.stamx.nl
+    │   └── httproute.yaml                  vakantie.lan.stamx.nl
     └── overlay/kustomization.yaml           namespace + image-tags
 ```
 
@@ -29,7 +29,7 @@ gitops/
 | `depart-postgresql`| StatefulSet uit de gedeelde `postgres/base`   | `depart-pv-iscsi-postgresql-db`           |
 
 `depart-web` is het enige onderdeel dat van buiten bereikbaar is, via de
-`private` gateway op `depart.lan.stamx.nl`. De api heeft een ClusterIP-service
+`private` gateway op `vakantie.lan.stamx.nl`. De api heeft een ClusterIP-service
 die alleen binnen het cluster bestaat; alle verkeer loopt via nginx in
 `depart-web`. Het documentenvolume wordt alleen door de api gemount.
 
@@ -46,6 +46,17 @@ Omdat het een initContainer is in een deployment met één replica en
 `strategy: Recreate`, kan er nooit meer dan één migratie tegelijk lopen, en
 start de api pas als de migratie geslaagd is. Mislukt de migratie, dan komt de
 pod niet omhoog en blijft de vorige versie staan.
+
+## Uitgaand internet
+
+De api haalt het weer (Open-Meteo) en de route (OSRM) van publieke diensten. Die
+hebben geen sleutel nodig, maar de `depart-api`-pod heeft er wel uitgaand
+internet voor nodig. Staat dat dicht, zet dan `EXTERN_ENABLED` in
+`depart-config` op `"false"`: de app blijft dan gewoon werken en de schermen
+melden dat er geen weer- of routegegevens zijn.
+
+De adressen staan in de ConfigMap en zijn te vervangen door een eigen instantie
+(bijvoorbeeld een OSRM in het cluster) zonder de images opnieuw te bouwen.
 
 ## Rechten op het documentenvolume
 

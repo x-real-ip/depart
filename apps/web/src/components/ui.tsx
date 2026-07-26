@@ -121,17 +121,65 @@ export function Veld({
   label,
   children,
   hint,
+  verplicht = false,
+  ingevuld,
 }: {
   label: string;
   children: ReactNode;
   hint?: string;
+  /** Zet een zichtbare markering achter het label. */
+  verplicht?: boolean;
+  /**
+   * Alleen bij een verplicht veld: is het al ingevuld? Zolang het leeg is
+   * krijgt de markering de aandachtskleur, daarna wordt hij rustig.
+   */
+  ingevuld?: boolean;
 }) {
   return (
     <label className="block">
-      <span className="label-mono mb-1.5 block text-slate">{label}</span>
+      <span className="label-mono mb-1.5 flex items-center gap-1.5 text-slate">
+        {label}
+        {verplicht && (
+          <span
+            className={ingevuld === false ? "text-alert" : "text-slate/50"}
+            title="Dit veld is verplicht"
+          >
+            verplicht
+          </span>
+        )}
+      </span>
       {children}
       {hint !== undefined && <span className="mt-1 block text-xs text-slate">{hint}</span>}
     </label>
+  );
+}
+
+/**
+ * Laat bovenaan een formulier zien wat er nog moet gebeuren. Geen verwijt, maar
+ * een lijstje: dit is wat er nog ontbreekt.
+ */
+export function NogInvullen({ velden }: { velden: string[] }) {
+  if (velden.length === 0) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-forest/30 bg-forest/8 px-3.5 py-2.5">
+        <span aria-hidden="true" className="text-forest">
+          ✓
+        </span>
+        <p className="text-sm text-forest">Alles wat verplicht is, is ingevuld.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-amber/45 bg-amber/12 px-3.5 py-2.5">
+      <p className="label-mono text-navy">nog invullen</p>
+      <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+        {velden.map((veld) => (
+          <li key={veld} className="text-sm text-ink">
+            {veld}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

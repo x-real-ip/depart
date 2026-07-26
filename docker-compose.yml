@@ -35,6 +35,11 @@ services:
       API_TOKEN: ${API_TOKEN}
       PORT: 8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      EXTERN_ENABLED: ${EXTERN_ENABLED:-true}
+      GEOCODING_URL: ${GEOCODING_URL:-https://geocoding-api.open-meteo.com/v1/search}
+      WEATHER_URL: ${WEATHER_URL:-https://api.open-meteo.com/v1/forecast}
+      ROUTING_URL: ${ROUTING_URL:-https://router.project-osrm.org}
+      EXTERN_CACHE_MINUTES: ${EXTERN_CACHE_MINUTES:-30}
     volumes:
       - documents:/data/documents
     depends_on:

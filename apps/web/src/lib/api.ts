@@ -85,6 +85,9 @@ export interface Trip {
   afstandKm: number | null;
   rijtijdMin: number | null;
   tolKosten: number | null;
+  /** Waar de reis begint. Vertrekpunt voor de route en plaats voor het weer thuis. */
+  thuisplaats: string | null;
+  thuisland: string | null;
   nachten: number;
 }
 
@@ -129,7 +132,71 @@ export interface Stop {
   tijd: string | null;
   opmerking: string | null;
   volgorde: number;
+  /** Een overnachting onderweg, of alleen een tussenstop van een paar uur. */
+  overnachting: boolean;
+  adres: string | null;
+  nachten: number | null;
 }
+
+export interface NieuweStop {
+  plaats: string;
+  tijd: string | null;
+  opmerking: string | null;
+  overnachting: boolean;
+  adres: string | null;
+  nachten: number | null;
+}
+
+// --- Actuele reisinformatie ------------------------------------------------
+
+export interface WeerDag {
+  datum: string;
+  maxTemp: number | null;
+  minTemp: number | null;
+  windKmh: number | null;
+  regenkans: number | null;
+}
+
+export interface WeerReeks {
+  plaats: string;
+  dagen: WeerDag[];
+  /** False als de reis nog te ver weg is voor een verwachting. */
+  dektVerblijf: boolean;
+}
+
+export interface WeerAntwoord {
+  bestemming: WeerReeks | null;
+  thuis: WeerReeks | null;
+  reden: string;
+}
+
+export interface RouteEtappe {
+  vanaf: string;
+  naar: string;
+  afstandKm: number;
+  rijtijdMin: number;
+}
+
+export interface RouteInfo {
+  etappes: RouteEtappe[];
+  totaalAfstandKm: number;
+  totaalRijtijdMin: number;
+}
+
+export interface RouteAntwoord {
+  route: RouteInfo | null;
+  reden: string;
+  overnachtingen?: number;
+}
+
+/** Melding bij een reden waarom er geen gegevens zijn. */
+export const REDEN_TEKST: Record<string, string> = {
+  uitgeschakeld: "De koppeling met externe diensten staat uit.",
+  "geen-thuisplaats": "Vul eerst je thuisplaats in bij de instellingen.",
+  "plaats-niet-gevonden": "Deze plaatsnaam is niet gevonden. Probeer een grotere plaats in de buurt.",
+  "dienst-onbereikbaar": "De dienst is nu niet bereikbaar. Probeer het later opnieuw.",
+  "te-weinig-punten": "Er zijn te weinig punten voor een route.",
+};
 
 export interface Contact {
   id: string;
@@ -165,6 +232,8 @@ export interface NieuweTrip {
   afstandKm?: number | null;
   rijtijdMin?: number | null;
   tolKosten?: number | null;
+  thuisplaats?: string | null;
+  thuisland?: string | null;
   reizigers?: { naam: string; geboortejaar: number | null }[];
 }
 
@@ -267,15 +336,28 @@ export const api = {
 
   etappes: {
     lijst: (tripId: string) => verzoek("GET", `/api/trips/${tripId}/stops`) as Promise<Stop[]>,
-    voegToe: (tripId: string, velden: { plaats: string; tijd: string | null; opmerking: string | null }) =>
+    voegToe: (tripId: string, velden: NieuweStop) =>
       verzoek("POST", `/api/trips/${tripId}/stops`, velden) as Promise<Stop>,
-    werkBij: (
-      id: string,
-      velden: { plaats?: string; tijd?: string | null; opmerking?: string | null },
-    ) => verzoek("PATCH", `/api/stops/${id}`, velden) as Promise<Stop>,
+    werkBij: (id: string, velden: Partial<NieuweStop>) =>
+      verzoek("PATCH", `/api/stops/${id}`, velden) as Promise<Stop>,
     herorden: (tripId: string, ids: string[]) =>
       verzoek("PUT", `/api/trips/${tripId}/stops/volgorde`, { ids }) as Promise<Stop[]>,
     verwijder: (id: string) => verzoek("DELETE", `/api/stops/${id}`) as Promise<null>,
+  },
+
+  /** Actuele gegevens van buiten: weer op de bestemming en thuis, en de route. */
+  reisinfo: {
+    weer: (tripId: string) => verzoek("GET", `/api/trips/${tripId}/weer`) as Promise<WeerAntwoord>,
+    route: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/route`) as Promise<RouteAntwoord>,
+    /** Zet de berekende afstand en rijtijd in de reis. */
+    routeOvernemen: (tripId: string) =>
+      verzoek("POST", `/api/trips/${tripId}/route/overnemen`, {}) as Promise<{
+        overgenomen: boolean;
+        reden: string;
+        afstandKm?: number | null;
+        rijtijdMin?: number | null;
+      }>,
   },
 
   noodnummers: {

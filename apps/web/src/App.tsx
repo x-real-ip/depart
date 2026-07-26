@@ -17,9 +17,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "onderweg", label: "Onderweg" },
 ];
 
-/** Waar je vandaan vertrekt. Vaste waarde: de app is voor één huishouden. */
-const VERTREK_VAN = "Utrecht";
-
 /** Onthoudt welke reis je het laatst bekeek. */
 const LAATSTE_REIS = "depart.laatsteReis";
 
@@ -185,7 +182,7 @@ export function App() {
       </nav>
 
       {tab === "overzicht" && (
-        <Overzicht tripId={actieveReis.id} vertrekVan={VERTREK_VAN} gaNaar={setTab} />
+        <Overzicht trip={actieveReis} gaNaar={setTab} />
       )}
       {tab === "documenten" && (
         <Documenten tripId={actieveReis.id} reizigers={actieveReis.reizigers} />
@@ -193,7 +190,9 @@ export function App() {
       {tab === "inpaklijst" && (
         <Inpaklijst tripId={actieveReis.id} reizigers={actieveReis.reizigers} />
       )}
-      {tab === "onderweg" && <Onderweg trip={actieveReis} />}
+      {tab === "onderweg" && (
+        <Onderweg trip={actieveReis} onTripGewijzigd={() => void herlaadActieveReis()} />
+      )}
       {tab === "instellingen" && (
         <Instellingen
           trip={actieveReis}
@@ -210,10 +209,14 @@ export function App() {
   );
 }
 
-/** Mobiel eerst: maximaal 480 px breed, gecentreerd op een groter scherm. */
+/**
+ * Mobiel eerst: op een telefoon één kolom van maximaal 480 px. Op een groter
+ * scherm mag de app de ruimte gebruiken — tot 1152 px, gecentreerd. De schermen
+ * zelf zetten hun inhoud daar in twee kolommen.
+ */
 function Schil({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-[480px] px-4 pt-4 pb-10">
+    <div className="mx-auto min-h-dvh w-full max-w-[480px] px-4 pt-4 pb-10 lg:max-w-6xl lg:px-8 lg:pt-8">
       <p className="label-mono mb-3 text-slate">{APP_TITLE}</p>
       {children}
     </div>

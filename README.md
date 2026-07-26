@@ -11,12 +11,32 @@ onderweg nodig hebt.
 
 | Scherm         | Wat je er doet                                                                |
 | -------------- | ----------------------------------------------------------------------------- |
-| **Overzicht**  | Vertrekbord met split-flap aftelklok, de kampeerplek, en vier statusregels     |
+| **Overzicht**  | Vertrekbord met split-flap aftelklok, de kampeerplek, het weer en de route     |
 | **Documenten** | Paspoorten en verzekeringen uploaden, geldigheid zien, bekijken en verwijderen |
 | **Inpaklijst** | Uitrusting en een koffer per reiziger, met voortgangsbalk en standaardlijst    |
-| **Onderweg**   | Etappes met tijden (versleepbaar), verplicht in de auto per land, noodnummers  |
+| **Onderweg**   | Etappes en overnachtingen (versleepbaar), verplicht in de auto, noodnummers    |
 
 Meerdere reizen kunnen naast elkaar bestaan; bovenin wissel je ertussen.
+
+## Actuele reisinformatie
+
+Twee dingen komen van buiten, van diensten die geen sleutel nodig hebben:
+
+- **Weer** — de dag- en nachttemperatuur, windkracht en regenkans voor elke dag
+  van het verblijf, zowel op de bestemming als thuis (Open-Meteo). Ligt de reis
+  verder weg dan zestien dagen, dan laat het scherm de komende week zien en zegt
+  het dat erbij.
+- **Route** — de rijafstand en rijtijd van thuis, via elke overnachting
+  onderweg, naar de eindbestemming (OSRM). Een tussenstop zonder overnachting
+  telt niet mee: die ligt op de route en zou de etappes onnodig opdelen.
+
+Coördinaten worden één keer opgezocht en bij de reis bewaard. Wijzig je een
+plaatsnaam, dan vervallen ze en worden ze opnieuw opgezocht.
+
+Een dienst die eruit ligt kan de app niet stukmaken: de endpoints geven altijd
+een antwoord, met daarin waarom er geen gegevens zijn. Er gaat nooit meer naar
+buiten dan een plaatsnaam of coördinaat — geen reisnamen, reizigers of
+documenten.
 
 ## Opbouw
 
@@ -52,13 +72,18 @@ cd apps/web && npm install && npm run dev
 
 De api leest alles uit de omgeving; niets is hardcoded.
 
-| Variabele        | Verplicht | Waarvoor                                            |
-| ---------------- | --------- | --------------------------------------------------- |
-| `DATABASE_URL`   | ja        | Verbinding met Postgres. Wordt nooit gelogd.        |
-| `DOCUMENTS_PATH` | ja        | Map op het gemounte volume waar de bestanden staan  |
-| `PORT`           | nee       | Standaard 8080                                      |
-| `API_TOKEN`      | nee       | Bearer-token op `/api/*`. Leeg = open api.          |
-| `LOG_LEVEL`      | nee       | `debug`, `info` (standaard), `warn` of `error`      |
+| Variabele              | Verplicht | Waarvoor                                                        |
+| ---------------------- | --------- | --------------------------------------------------------------- |
+| `DATABASE_URL`         | ja        | Verbinding met Postgres. Wordt nooit gelogd.                    |
+| `DOCUMENTS_PATH`       | ja        | Map op het gemounte volume waar de bestanden staan              |
+| `PORT`                 | nee       | Standaard 8080                                                  |
+| `API_TOKEN`            | nee       | Bearer-token op `/api/*`. Leeg = open api.                      |
+| `LOG_LEVEL`            | nee       | `debug`, `info` (standaard), `warn` of `error`                   |
+| `EXTERN_ENABLED`       | nee       | `false` schakelt weer en route uit; de app blijft werken        |
+| `GEOCODING_URL`        | nee       | Open-Meteo geocoding; overschrijf voor een eigen instantie      |
+| `WEATHER_URL`          | nee       | Open-Meteo forecast                                             |
+| `ROUTING_URL`          | nee       | OSRM; overschrijf voor een eigen router                         |
+| `EXTERN_CACHE_MINUTES` | nee       | Hoe lang een antwoord in het geheugen blijft (standaard 30)      |
 
 De frontend krijgt `API_TOKEN` en `APP_TITLE` bij het opstarten van de container
 in `env.js` gerenderd, dus dezelfde image werkt in elke omgeving.
@@ -72,6 +97,10 @@ bestanden van schijf.
 
 `traveler_id` mag leeg zijn. Dat betekent: hoort bij het hele gezin of bij de
 auto, zoals de groene kaart of de gasfles.
+
+Een `stop` is een tussenstop van een paar uur, óf een overnachting onderweg
+(`overnachting = true`, met een adres en een aantal nachten). Alleen
+overnachtingen zijn punten in de route.
 
 De **status van een document** staat niet in de database maar wordt berekend:
 
@@ -100,7 +129,7 @@ voor stap in [`ansible/README.md`](ansible/README.md).
 Er staan paspoortscans in deze app. Daarom:
 
 - **Niet publiek.** `depart-web` hangt aan de `private` gateway op
-  `depart.lan.stamx.nl` en is alleen binnen het eigen netwerk bereikbaar. De api
+  `vakantie.lan.stamx.nl` en is alleen binnen het eigen netwerk bereikbaar. De api
   heeft daarbovenop een optionele bearer-token.
 - **Documenten gaan altijd via de api**, op `/api/documents/:id/bestand`. Er is
   geen statisch bestand met een raadbare URL. De response krijgt
@@ -135,7 +164,5 @@ De images heten `ghcr.io/x-real-ip/depart-web` en `ghcr.io/x-real-ip/depart-api`
 
 ## Nog niet gebouwd
 
-- Weer via Open-Meteo (het weerblok op het overzicht staat er al, zonder gegevens)
-- Route en rijtijd via OpenRouteService
 - Landreisadvies van Buitenlandse Zaken
 - Offline gebruik onderweg als PWA

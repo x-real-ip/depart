@@ -20,6 +20,12 @@ export interface TripRow {
   afstand_km: number | null;
   rijtijd_min: number | null;
   tol_kosten: number | null;
+  thuisplaats: string | null;
+  thuisland: string | null;
+  thuis_lat: number | null;
+  thuis_lon: number | null;
+  bestemming_lat: number | null;
+  bestemming_lon: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -60,6 +66,11 @@ export interface StopRow {
   tijd: string | null;
   opmerking: string | null;
   volgorde: number;
+  overnachting: boolean;
+  adres: string | null;
+  nachten: number | null;
+  lat: number | null;
+  lon: number | null;
 }
 
 export interface ContactRow {
@@ -72,6 +83,7 @@ export interface ContactRow {
 export const tripColumns = `
   id, naam, bestemming, land, regio, vertrekdatum, terugdatum,
   camping_naam, plaatsnummer, plaats_info, afstand_km, rijtijd_min, tol_kosten,
+  thuisplaats, thuisland, thuis_lat, thuis_lon, bestemming_lat, bestemming_lon,
   created_at, updated_at
 `;
 
@@ -90,6 +102,8 @@ export function toTrip(row: TripRow) {
     afstandKm: row.afstand_km,
     rijtijdMin: row.rijtijd_min,
     tolKosten: row.tol_kosten,
+    thuisplaats: row.thuisplaats,
+    thuisland: row.thuisland,
     /** Aantal nachten op de camping, uit de datums berekend. */
     nachten: nachtenTussen(row.vertrekdatum, row.terugdatum),
   };
@@ -123,6 +137,9 @@ export function toStop(row: StopRow) {
     tijd: row.tijd,
     opmerking: row.opmerking,
     volgorde: row.volgorde,
+    overnachting: row.overnachting,
+    adres: row.adres,
+    nachten: row.nachten,
   };
 }
 
