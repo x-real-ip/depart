@@ -69,7 +69,6 @@ async function verzoek(methode: string, pad: string, body?: unknown): Promise<un
 // --- Gegevenstypen, gelijk aan wat de api teruggeeft ----------------------
 
 export type DocumentStatus = "ontbreekt" | "let op" | "geldig";
-export type PackGroep = "uitrusting" | "koffer";
 
 export interface Trip {
   id: string;
@@ -122,14 +121,25 @@ export interface DocumentItem {
   status: DocumentStatus;
 }
 
+/** Een zelfgekozen inpaklijst — Uitrusting, Boodschappen, Fotografie, wat dan ook. */
+export interface PackList {
+  id: string;
+  tripId: string;
+  naam: string;
+  /** Optioneel: deze lijst hoort bij één reiziger. */
+  travelerId: string | null;
+}
+
 export interface PackItem {
   id: string;
   tripId: string;
-  travelerId: string | null;
-  groep: PackGroep;
+  packListId: string;
   label: string;
   afgevinkt: boolean;
 }
+
+/** Startset voor een nieuwe lijst: kampeer-basisuitrusting of persoonlijke spullen. */
+export type StandaardSoort = "uitrusting" | "persoonlijk";
 
 export interface Stop {
   id: string;
@@ -263,8 +273,8 @@ export interface Voortgang {
 export interface Overzicht {
   trip: Trip;
   documenten: { totaal: number; ontbreekt: number; letOp: number; geldig: number };
-  uitrusting: Voortgang;
-  koffers: Voortgang;
+  /** Over alle inpaklijsten heen: hoeveel er zijn en hoe ver je bent. */
+  inpaklijsten: Voortgang & { lijsten: number };
   onderweg: { etappes: number; noodnummers: number };
 }
 
@@ -364,26 +374,29 @@ export const api = {
     },
   },
 
-  inpaklijst: {
+  /** Eigen inpaklijsten: elke lijst heeft een naam die je zelf kiest. */
+  inpaklijsten: {
+    lijst: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/pack-lists`) as Promise<PackList[]>,
+    maak: (tripId: string, naam: string, travelerId: string | null) =>
+      verzoek("POST", `/api/trips/${tripId}/pack-lists`, { naam, travelerId }) as Promise<PackList>,
+    werkBij: (id: string, velden: { naam?: string; travelerId?: string | null }) =>
+      verzoek("PATCH", `/api/pack-lists/${id}`, velden) as Promise<PackList>,
+    verwijder: (id: string) => verzoek("DELETE", `/api/pack-lists/${id}`) as Promise<null>,
+    standaardlijst: (id: string, soort: StandaardSoort) =>
+      verzoek("POST", `/api/pack-lists/${id}/standaardlijst`, { soort }) as Promise<{
+        toegevoegd: number;
+        items: PackItem[];
+      }>,
+    wisVinkjes: (id: string) =>
+      verzoek("POST", `/api/pack-lists/${id}/wis-vinkjes`, {}) as Promise<{ gewist: number }>,
+  },
+
+  inpaklijstItems: {
     lijst: (tripId: string) =>
       verzoek("GET", `/api/trips/${tripId}/pack-items`) as Promise<PackItem[]>,
-    voegToe: (tripId: string, groep: PackGroep, travelerId: string | null, label: string) =>
-      verzoek("POST", `/api/trips/${tripId}/pack-items`, {
-        groep,
-        travelerId,
-        label,
-      }) as Promise<PackItem>,
-    standaardlijst: (tripId: string, groep: PackGroep, travelerId: string | null) =>
-      verzoek("POST", `/api/trips/${tripId}/pack-items/standaardlijst`, {
-        groep,
-        travelerId,
-      }) as Promise<{ toegevoegd: number; items: PackItem[] }>,
-    wisVinkjes: (tripId: string, groep?: PackGroep, travelerId?: string | null) =>
-      verzoek(
-        "POST",
-        `/api/trips/${tripId}/pack-items/wis-vinkjes`,
-        groep === undefined ? {} : { groep, travelerId: travelerId ?? null },
-      ) as Promise<{ gewist: number }>,
+    voegToe: (packListId: string, label: string) =>
+      verzoek("POST", `/api/pack-lists/${packListId}/pack-items`, { label }) as Promise<PackItem>,
     werkBij: (id: string, velden: { label?: string; afgevinkt?: boolean }) =>
       verzoek("PATCH", `/api/pack-items/${id}`, velden) as Promise<PackItem>,
     verwijder: (id: string) => verzoek("DELETE", `/api/pack-items/${id}`) as Promise<null>,

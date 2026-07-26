@@ -1,13 +1,18 @@
 import type { FastifyPluginAsync } from "fastify";
-import { STANDAARD_KOFFER, STANDAARD_UITRUSTING } from "../defaults.js";
-import { query, queryOne, transaction } from "../db.js";
-import { toPackItem, type PackGroep, type PackItemRow } from "../types.js";
-import { Fields, NotFoundError, ValidationError, pathUuid } from "../validate.js";
+import { query, queryOne } from "../db.js";
+import { toPackItem, type PackItemRow } from "../types.js";
+import { Fields, NotFoundError, pathUuid } from "../validate.js";
 import { haalTrip } from "./trips.js";
 
-const PACK_ITEM_KOLOMMEN = `id, trip_id, traveler_id, groep, label, afgevinkt`;
+const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt`;
 
+/**
+ * Items zelf: aanmaken gaat via een lijst (zie packLists.ts,
+ * `POST /pack-lists/:id/pack-items`), maar opvragen, bewerken en verwijderen
+ * werken op het item zelf.
+ */
 export const packItemRoutes: FastifyPluginAsync = async (app) => {
+  /** Alle items van een reis, over alle lijsten heen — de app filtert zelf per lijst. */
   app.get("/trips/:tripId/pack-items", async (request) => {
     const tripId = pathUuid((request.params as { tripId?: string }).tripId, "tripId");
     await haalTrip(tripId);
@@ -17,91 +22,6 @@ export const packItemRoutes: FastifyPluginAsync = async (app) => {
       [tripId],
     );
     return result.rows.map(toPackItem);
-  });
-
-  app.post("/trips/:tripId/pack-items", async (request, reply) => {
-    const tripId = pathUuid((request.params as { tripId?: string }).tripId, "tripId");
-    await haalTrip(tripId);
-    const fields = new Fields(request.body);
-
-    const groep = fields.oneOf<PackGroep>("groep", ["uitrusting", "koffer"]);
-    const travelerId = fields.optionalUuid("travelerId");
-    controleerGroep(groep, travelerId);
-    if (travelerId) await controleerReiziger(travelerId, tripId);
-
-    const row = await queryOne<PackItemRow>(
-      `INSERT INTO pack_item (trip_id, traveler_id, groep, label)
-       VALUES ($1, $2, $3, $4) RETURNING ${PACK_ITEM_KOLOMMEN}`,
-      [tripId, travelerId, groep, fields.text("label", { max: 120 })],
-    );
-    reply.code(201);
-    return toPackItem(row!);
-  });
-
-  /**
-   * Vult de kampeer-basislijst aan. Items die al op de lijst staan worden
-   * overgeslagen, zodat twee keer klikken geen dubbele tent oplevert.
-   */
-  app.post("/trips/:tripId/pack-items/standaardlijst", async (request) => {
-    const tripId = pathUuid((request.params as { tripId?: string }).tripId, "tripId");
-    await haalTrip(tripId);
-    const fields = new Fields(request.body ?? {});
-    const groep = fields.has("groep")
-      ? fields.oneOf<PackGroep>("groep", ["uitrusting", "koffer"])
-      : "uitrusting";
-    const travelerId = fields.optionalUuid("travelerId");
-    controleerGroep(groep, travelerId);
-    if (travelerId) await controleerReiziger(travelerId, tripId);
-
-    const labels = groep === "uitrusting" ? STANDAARD_UITRUSTING : STANDAARD_KOFFER;
-
-    const toegevoegd = await transaction(async (client) => {
-      const bestaand = await client.query<{ label: string }>(
-        `SELECT label FROM pack_item
-         WHERE trip_id = $1 AND groep = $2 AND traveler_id IS NOT DISTINCT FROM $3`,
-        [tripId, groep, travelerId],
-      );
-      const aanwezig = new Set(bestaand.rows.map((row) => row.label.toLowerCase()));
-
-      const nieuw: PackItemRow[] = [];
-      for (const label of labels) {
-        if (aanwezig.has(label.toLowerCase())) continue;
-        const created = await client.query<PackItemRow>(
-          `INSERT INTO pack_item (trip_id, traveler_id, groep, label)
-           VALUES ($1, $2, $3, $4) RETURNING ${PACK_ITEM_KOLOMMEN}`,
-          [tripId, travelerId, groep, label],
-        );
-        nieuw.push(created.rows[0]!);
-      }
-      return nieuw;
-    });
-
-    return { toegevoegd: toegevoegd.length, items: toegevoegd.map(toPackItem) };
-  });
-
-  /** Wist alle vinkjes. De bevestiging vraagt de app, niet de api. */
-  app.post("/trips/:tripId/pack-items/wis-vinkjes", async (request) => {
-    const tripId = pathUuid((request.params as { tripId?: string }).tripId, "tripId");
-    await haalTrip(tripId);
-    const fields = new Fields(request.body ?? {});
-
-    // Zonder groep: alles. Met groep: alleen die lijst.
-    const filters: string[] = ["trip_id = $1", "afgevinkt = true"];
-    const params: unknown[] = [tripId];
-    if (fields.has("groep")) {
-      params.push(fields.oneOf<PackGroep>("groep", ["uitrusting", "koffer"]));
-      filters.push(`groep = $${params.length}`);
-    }
-    if (fields.has("travelerId")) {
-      params.push(fields.optionalUuid("travelerId"));
-      filters.push(`traveler_id IS NOT DISTINCT FROM $${params.length}`);
-    }
-
-    const result = await query(
-      `UPDATE pack_item SET afgevinkt = false WHERE ${filters.join(" AND ")}`,
-      params,
-    );
-    return { gewist: result.rowCount ?? 0 };
   });
 
   app.patch("/pack-items/:id", async (request) => {
@@ -132,24 +52,3 @@ export const packItemRoutes: FastifyPluginAsync = async (app) => {
     return null;
   });
 };
-
-/**
- * Uitrusting is gezamenlijk, een koffer hoort bij één reiziger. Dezelfde regel
- * staat als CHECK in de database; hier levert hij een leesbare melding op.
- */
-function controleerGroep(groep: PackGroep, travelerId: string | null): void {
-  if (groep === "uitrusting" && travelerId !== null) {
-    throw new ValidationError("Uitrusting is gezamenlijk en hoort niet bij één reiziger");
-  }
-  if (groep === "koffer" && travelerId === null) {
-    throw new ValidationError("Kies bij een koffer de reiziger waar het item bij hoort");
-  }
-}
-
-async function controleerReiziger(travelerId: string, tripId: string): Promise<void> {
-  const reiziger = await queryOne<{ id: string }>(
-    `SELECT id FROM traveler WHERE id = $1 AND trip_id = $2`,
-    [travelerId, tripId],
-  );
-  if (!reiziger) throw new ValidationError("Deze reiziger hoort niet bij deze reis");
-}

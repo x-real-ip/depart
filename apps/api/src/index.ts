@@ -5,6 +5,7 @@ import { pool, waitForDatabase } from "./db.js";
 import { adresRoutes } from "./routes/adressen.js";
 import { documentRoutes } from "./routes/documents.js";
 import { packItemRoutes } from "./routes/packItems.js";
+import { packListRoutes } from "./routes/packLists.js";
 import { reisinfoRoutes } from "./routes/reisinfo.js";
 import { onderwegRoutes } from "./routes/stops.js";
 import { tripRoutes } from "./routes/trips.js";
@@ -114,6 +115,7 @@ app.setErrorHandler(async (error, request, reply) => {
 await app.register(
   async (api) => {
     await api.register(tripRoutes);
+    await api.register(packListRoutes);
     await api.register(packItemRoutes);
     await api.register(onderwegRoutes);
     await api.register(documentRoutes);

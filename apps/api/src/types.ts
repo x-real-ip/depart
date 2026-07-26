@@ -4,7 +4,6 @@
  */
 
 export type DocumentStatus = "ontbreekt" | "let op" | "geldig";
-export type PackGroep = "uitrusting" | "koffer";
 
 export interface TripRow {
   id: string;
@@ -52,11 +51,18 @@ export interface DocumentRow {
   grootte: number | null;
 }
 
+/** Een zelfgekozen inpaklijst, optioneel bij één reiziger. */
+export interface PackListRow {
+  id: string;
+  trip_id: string;
+  naam: string;
+  traveler_id: string | null;
+}
+
 export interface PackItemRow {
   id: string;
   trip_id: string;
-  traveler_id: string | null;
-  groep: PackGroep;
+  pack_list_id: string;
   label: string;
   afgevinkt: boolean;
 }
@@ -129,12 +135,20 @@ export function toTraveler(row: TravelerRow) {
   };
 }
 
+export function toPackList(row: PackListRow) {
+  return {
+    id: row.id,
+    tripId: row.trip_id,
+    naam: row.naam,
+    travelerId: row.traveler_id,
+  };
+}
+
 export function toPackItem(row: PackItemRow) {
   return {
     id: row.id,
     tripId: row.trip_id,
-    travelerId: row.traveler_id,
-    groep: row.groep,
+    packListId: row.pack_list_id,
     label: row.label,
     afgevinkt: row.afgevinkt,
   };
