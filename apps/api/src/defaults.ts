@@ -20,8 +20,8 @@ export const STANDAARD_UITRUSTING = [
   "EHBO-kit",
 ] as const;
 
-/** Basislijst per koffer, zodat een nieuwe reiziger niet leeg begint. */
-export const STANDAARD_KOFFER = [
+/** Basislijst voor persoonlijke spullen, zodat een nieuwe lijst niet leeg begint. */
+export const STANDAARD_PERSOONLIJK = [
   "Kleding",
   "Regenjas",
   "Zwemkleding",

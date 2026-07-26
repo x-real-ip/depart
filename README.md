@@ -13,7 +13,7 @@ onderweg nodig hebt.
 | -------------- | ----------------------------------------------------------------------------- |
 | **Overzicht**  | Vertrekbord met split-flap aftelklok, de kampeerplek, het weer en de route     |
 | **Documenten** | Paspoorten en verzekeringen uploaden, geldigheid zien, bekijken en verwijderen |
-| **Inpaklijst** | Uitrusting en een koffer per reiziger, met voortgangsbalk en standaardlijst    |
+| **Inpaklijst** | Eigen lijsten met een eigen naam, onbeperkt items, voortgangsbalk en standaardlijst |
 | **Onderweg**   | Etappes en overnachtingen (versleepbaar), verplicht in de auto, noodnummers    |
 
 Meerdere reizen kunnen naast elkaar bestaan; bovenin wissel je ertussen.
@@ -115,12 +115,19 @@ in `env.js` gerenderd, dus dezelfde image werkt in elke omgeving.
 inpaklijsten, etappes en noodnummers mee — en de api haalt daarna ook de map met
 bestanden van schijf.
 
-`traveler_id` mag leeg zijn. Dat betekent: hoort bij het hele gezin of bij de
-auto, zoals de groene kaart of de gasfles.
+`traveler_id` op een document mag leeg zijn. Dat betekent: hoort bij het hele
+gezin of bij de auto, zoals de groene kaart of de gasfles.
 
 Een `stop` is een tussenstop van een paar uur, óf een overnachting onderweg
 (`overnachting = true`, met een adres en een aantal nachten). Alleen
 overnachtingen zijn punten in de route.
+
+Een `pack_list` is een inpaklijst met een zelfgekozen naam — Uitrusting,
+Boodschappen, Fotografie, wat dan ook — en mag optioneel bij één reiziger
+horen (`traveler_id`, ook hier weer optioneel). Onbeperkt lijsten per reis,
+onbeperkt items per lijst. Verwijder je een reiziger, dan gaan de lijsten die
+bij hem horen mee, en daarmee ook hun items (een dubbele cascade: via
+`pack_list.traveler_id` en dan via `pack_item.pack_list_id`).
 
 Naast `thuisplaats`/`bestemming` (stad, verplicht, voor het weer en de
 koptekst) is er `thuisadres`/`bestemming_adres` (optioneel, preciezer — voor de

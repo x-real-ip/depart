@@ -196,8 +196,8 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * Samenvatting voor het overzichtsscherm: de vier statusregels in één
-   * aanroep, zodat het scherm niet vier keer hoeft te vragen.
+   * Samenvatting voor het overzichtsscherm: de statusregels in één aanroep,
+   * zodat het scherm niet meerdere keren hoeft te vragen.
    */
   app.get("/trips/:id/overzicht", async (request) => {
     const id = pathUuid((request.params as { id?: string }).id);
@@ -211,12 +211,16 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
     );
     const statussen = documenten.rows.map((row) => documentStatus(row, trip.terugdatum));
 
-    const pakItems = await query<{ groep: string; afgevinkt: boolean }>(
-      `SELECT groep, afgevinkt FROM pack_item WHERE trip_id = $1`,
+    // Eén gecombineerd cijfer over alle inpaklijsten heen — hoeveel dat er
+    // zijn maakt voor de status "ben ik klaar om te vertrekken" niet uit.
+    const pakItems = await query<{ afgevinkt: boolean }>(
+      `SELECT afgevinkt FROM pack_item WHERE trip_id = $1`,
       [id],
     );
-    const uitrusting = pakItems.rows.filter((row) => row.groep === "uitrusting");
-    const koffers = pakItems.rows.filter((row) => row.groep === "koffer");
+    const lijsten = await queryOne<{ aantal: number }>(
+      `SELECT count(*)::int AS aantal FROM pack_list WHERE trip_id = $1`,
+      [id],
+    );
 
     const etappes = await queryOne<{ aantal: number }>(
       `SELECT count(*)::int AS aantal FROM stop WHERE trip_id = $1`,
@@ -235,8 +239,7 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
         letOp: statussen.filter((status) => status === "let op").length,
         geldig: statussen.filter((status) => status === "geldig").length,
       },
-      uitrusting: voortgang(uitrusting),
-      koffers: voortgang(koffers),
+      inpaklijsten: { ...voortgang(pakItems.rows), lijsten: lijsten?.aantal ?? 0 },
       onderweg: {
         etappes: etappes?.aantal ?? 0,
         noodnummers: noodnummers?.aantal ?? 0,
@@ -297,8 +300,10 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * Verwijdert een reiziger. Documenten en koffer-items die aan deze reiziger
-   * hingen gaan via cascade mee; de bestanden op schijf halen we hier weg.
+   * Verwijdert een reiziger. Documenten die aan deze reiziger hingen gaan via
+   * cascade mee, net als inpaklijsten die bij deze reiziger horen (en de
+   * items daarin, via een tweede cascade); de bestanden op schijf halen we
+   * hier weg.
    */
   app.delete("/travelers/:id", async (request, reply) => {
     const id = pathUuid((request.params as { id?: string }).id);

@@ -344,7 +344,7 @@ export function Instellingen({
         {teVerwijderenReiziger !== null && (
           <Bevestiging
             vraag={`${trip.reizigers.find((r) => r.id === teVerwijderenReiziger)?.naam ?? "Deze reiziger"} verwijderen?`}
-            toelichting="De koffer en de persoonlijke documenten van deze reiziger gaan mee, inclusief de geüploade bestanden."
+            toelichting="Inpaklijsten en documenten die bij deze reiziger horen gaan mee, inclusief de geüploade bestanden."
             bevestigLabel="Verwijder"
             onAnnuleer={() => setTeVerwijderenReiziger(null)}
             onBevestig={() =>

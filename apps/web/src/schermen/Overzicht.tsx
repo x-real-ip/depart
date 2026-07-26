@@ -16,7 +16,7 @@ import type { Tab } from "../App.tsx";
 
 /**
  * Het overzicht beantwoordt de vraag "ben ik klaar om te vertrekken?" en niets
- * anders. De vier statusregels zijn knoppen naar het bijbehorende tabblad.
+ * anders. De statusregels zijn knoppen naar het bijbehorende tabblad.
  *
  * Weer en route komen van buiten en kunnen ontbreken. Het scherm laat dan zien
  * waarom, en blijft verder gewoon werken.
@@ -69,7 +69,7 @@ export function Overzicht({
   if (fout !== null) return <Melding tekst={fout} />;
   if (gegevens === null) return <Laden />;
 
-  const { documenten, uitrusting, koffers } = gegevens;
+  const { documenten, inpaklijsten } = gegevens;
   const dagen = dagenTot(trip.vertrekdatum);
   const vertrekVan = trip.thuisplaats ?? "thuis";
 
@@ -142,7 +142,7 @@ export function Overzicht({
         </div>
 
         <div className="space-y-4">
-          {/* Het statusblok: vier regels, elk een knop naar het tabblad. */}
+          {/* Het statusblok: drie regels, elk een knop naar het tabblad. */}
           <Kaart className="p-0">
             <h2 className="label-mono px-4 pt-4 pb-1 text-slate">
               Ben ik klaar om te vertrekken?
@@ -168,27 +168,14 @@ export function Overzicht({
               </li>
               <li>
                 <StatusRegel
-                  label="Uitrusting"
+                  label="Inpaklijsten"
                   waarde={
-                    uitrusting.totaal === 0
+                    inpaklijsten.lijsten === 0
                       ? "nog geen lijst"
-                      : `${uitrusting.afgevinkt} van ${uitrusting.totaal} ingeladen`
+                      : `${inpaklijsten.afgevinkt} van ${inpaklijsten.totaal} klaar, ${inpaklijsten.lijsten} ${inpaklijsten.lijsten === 1 ? "lijst" : "lijsten"}`
                   }
-                  percentage={uitrusting.totaal === 0 ? undefined : uitrusting.percentage}
-                  kleur={uitrusting.percentage === 100 ? "forest" : "amber"}
-                  onClick={() => gaNaar("inpaklijst")}
-                />
-              </li>
-              <li>
-                <StatusRegel
-                  label="Koffers"
-                  waarde={
-                    koffers.totaal === 0
-                      ? "nog geen lijst"
-                      : `${koffers.afgevinkt} van ${koffers.totaal} ingepakt`
-                  }
-                  percentage={koffers.totaal === 0 ? undefined : koffers.percentage}
-                  kleur={koffers.percentage === 100 ? "forest" : "amber"}
+                  percentage={inpaklijsten.lijsten === 0 ? undefined : inpaklijsten.percentage}
+                  kleur={inpaklijsten.percentage === 100 ? "forest" : "amber"}
                   onClick={() => gaNaar("inpaklijst")}
                 />
               </li>
