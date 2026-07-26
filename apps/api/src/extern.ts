@@ -23,6 +23,11 @@ export interface Coordinaat {
   lon: number;
 }
 
+/** Waarom een plaats geen coördinaat opleverde. */
+export type CoordinaatUitkomst =
+  | { coordinaat: Coordinaat }
+  | { fout: "niet-gevonden" | "onbereikbaar" };
+
 export interface WeerDag {
   datum: string;
   maxTemp: number | null;
@@ -85,11 +90,19 @@ function inCache(sleutel: string, waarde: unknown): void {
 // --- Ophalen ---------------------------------------------------------------
 
 /**
- * Haalt JSON op met een timeout. Geeft null bij elke fout: een dienst die er
- * niet is, mag geen 500 opleveren.
+ * Het onderscheid tussen "de dienst antwoordde" en "de dienst was er niet" moet
+ * bewaard blijven. Zonder dat verschil krijgt de gebruiker bij een storing te
+ * horen dat zijn plaatsnaam niet bestaat, en gaat hij een probleem oplossen dat
+ * er niet is.
  */
-async function haalJson<T>(url: string, waarvoor: string): Promise<T | null> {
-  if (!config.extern.enabled) return null;
+type Uitkomst<T> = { ok: true; data: T } | { ok: false };
+
+/**
+ * Haalt JSON op met een timeout. Een dienst die er niet is mag geen 500
+ * opleveren, dus fouten komen terug als { ok: false }.
+ */
+async function haalJson<T>(url: string, waarvoor: string): Promise<Uitkomst<T>> {
+  if (!config.extern.enabled) return { ok: false };
 
   const afbreken = AbortSignal.timeout(config.extern.timeoutMs);
   try {
@@ -99,12 +112,12 @@ async function haalJson<T>(url: string, waarvoor: string): Promise<T | null> {
     });
     if (!response.ok) {
       externeFout(waarvoor, `status ${response.status}`);
-      return null;
+      return { ok: false };
     }
-    return (await response.json()) as T;
+    return { ok: true, data: (await response.json()) as T };
   } catch (error) {
     externeFout(waarvoor, foutReden(error));
-    return null;
+    return { ok: false };
   }
 }
 
@@ -166,10 +179,10 @@ interface GeocodingAntwoord {
 export async function zoekCoordinaat(
   plaats: string,
   land?: string | null,
-): Promise<Coordinaat | null> {
+): Promise<CoordinaatUitkomst> {
   const sleutel = `geo:${plaats.toLowerCase()}|${(land ?? "").toLowerCase()}`;
-  const bewaard = uitCache<Coordinaat | null>(sleutel);
-  if (bewaard !== undefined) return bewaard;
+  const bewaard = uitCache<Coordinaat>(sleutel);
+  if (bewaard !== undefined) return { coordinaat: bewaard };
 
   const url = new URL(config.extern.geocodingUrl);
   url.searchParams.set("name", plaats);
@@ -178,8 +191,12 @@ export async function zoekCoordinaat(
   url.searchParams.set("format", "json");
 
   const antwoord = await haalJson<GeocodingAntwoord>(url.toString(), "geocoding");
-  const treffers = antwoord?.results ?? [];
-  if (treffers.length === 0) return null;
+  // De dienst deed het niet. Dat is iets anders dan een onbekende plaats, en de
+  // gebruiker hoort niet te horen dat hij zijn plaatsnaam moet aanpassen.
+  if (!antwoord.ok) return { fout: "onbereikbaar" };
+
+  const treffers = antwoord.data.results ?? [];
+  if (treffers.length === 0) return { fout: "niet-gevonden" };
 
   // Bij een land: de eerste treffer in dat land. Anders de eerste treffer.
   const landcode = land === null || land === undefined ? null : landnaarCode(land);
@@ -188,9 +205,9 @@ export async function zoekCoordinaat(
       ? treffers.find((r) => r.country_code?.toUpperCase() === landcode)
       : undefined) ?? treffers[0]!;
 
-  const resultaat: Coordinaat = { lat: treffer.latitude, lon: treffer.longitude };
-  inCache(sleutel, resultaat);
-  return resultaat;
+  const coordinaat: Coordinaat = { lat: treffer.latitude, lon: treffer.longitude };
+  inCache(sleutel, coordinaat);
+  return { coordinaat };
 }
 
 /** Landnamen zoals de app ze gebruikt, naar ISO-landcode. */
@@ -277,7 +294,8 @@ export async function haalWeer(
   url.searchParams.set("end_date", eindDatum);
 
   const antwoord = await haalJson<WeerAntwoord>(url.toString(), "weer");
-  const dagelijks = antwoord?.daily;
+  if (!antwoord.ok) return null;
+  const dagelijks = antwoord.data.daily;
   if (dagelijks === undefined || dagelijks.time.length === 0) return null;
 
   const dagen: WeerDag[] = dagelijks.time.map((datum, index) => ({
@@ -319,8 +337,9 @@ export async function haalRoute(
 
   const url = `${config.extern.routingUrl.replace(/\/$/, "")}/route/v1/driving/${coordinaten}?overview=false`;
   const antwoord = await haalJson<OsrmAntwoord>(url, "route");
-  const legs = antwoord?.routes?.[0]?.legs;
-  if (antwoord?.code !== "Ok" || legs === undefined || legs.length !== punten.length - 1) {
+  if (!antwoord.ok) return null;
+  const legs = antwoord.data.routes?.[0]?.legs;
+  if (antwoord.data.code !== "Ok" || legs === undefined || legs.length !== punten.length - 1) {
     return null;
   }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { SplitFlapAftelklok } from "../components/SplitFlap.tsx";
 import { Kaart, KaartKop, Knop, Laden, Melding, VoortgangsBalk } from "../components/ui.tsx";
 import {
+  REDEN_KORT,
   REDEN_TEKST,
   api,
   type Overzicht as OverzichtGegevens,
@@ -229,6 +230,11 @@ function WeerKaart({
   }
 
   const reeksen = [weer.bestemming, weer.thuis].filter((r): r is WeerReeks => r !== null);
+  // Wat er mist, met de reden erbij. Eén plaats kan lukken en de andere niet.
+  const missend = [
+    weer.bestemming === null ? { wat: "de bestemming", reden: weer.bestemmingReden } : null,
+    weer.thuis === null ? { wat: "thuis", reden: weer.thuisReden } : null,
+  ].filter((m): m is { wat: string; reden: string } => m !== null);
 
   if (reeksen.length === 0) {
     return (
@@ -271,6 +277,17 @@ function WeerKaart({
           <WeerKolom key={reeks.plaats} reeks={reeks} />
         ))}
       </div>
+
+      {/* Niet stil laten: zeg welke plaats mist en waarom. */}
+      {missend.length > 0 && (
+        <ul className="mt-3 space-y-1 border-t border-slate/12 pt-3">
+          {missend.map((mist) => (
+            <li key={mist.wat} className="text-xs text-slate">
+              Geen verwachting voor {mist.wat} — {REDEN_KORT[mist.reden] ?? mist.reden}.
+            </li>
+          ))}
+        </ul>
+      )}
     </Kaart>
   );
 }

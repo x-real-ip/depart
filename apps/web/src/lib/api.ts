@@ -167,6 +167,10 @@ export interface WeerReeks {
 export interface WeerAntwoord {
   bestemming: WeerReeks | null;
   thuis: WeerReeks | null;
+  /** Reden per plaats: de een kan lukken terwijl de ander mislukt. */
+  bestemmingReden: string;
+  thuisReden: string;
+  /** Overkoepelend: "ok" zodra er minstens één reeks is. */
   reden: string;
 }
 
@@ -194,8 +198,17 @@ export const REDEN_TEKST: Record<string, string> = {
   uitgeschakeld: "De koppeling met externe diensten staat uit.",
   "geen-thuisplaats": "Vul eerst je thuisplaats in bij de instellingen.",
   "plaats-niet-gevonden": "Deze plaatsnaam is niet gevonden. Probeer een grotere plaats in de buurt.",
-  "dienst-onbereikbaar": "De dienst is nu niet bereikbaar. Probeer het later opnieuw.",
+  "dienst-onbereikbaar":
+    "De dienst is nu niet bereikbaar — dit ligt niet aan je invoer. Probeer het later opnieuw.",
   "te-weinig-punten": "Er zijn te weinig punten voor een route.",
+};
+
+/** Korte variant voor naast een plaatsnaam. */
+export const REDEN_KORT: Record<string, string> = {
+  uitgeschakeld: "koppeling staat uit",
+  "geen-thuisplaats": "thuisplaats ontbreekt",
+  "plaats-niet-gevonden": "plaatsnaam niet gevonden",
+  "dienst-onbereikbaar": "dienst niet bereikbaar",
 };
 
 export interface Contact {
