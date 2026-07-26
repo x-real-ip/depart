@@ -6,6 +6,7 @@ import {
   haalWeer,
   zoekCoordinaat,
   type Coordinaat,
+  type CoordinaatUitkomst,
   type RouteInfo,
   type WeerReeks,
 } from "../extern.js";
@@ -34,33 +35,38 @@ type Reden =
  * Zoekt de coördinaten van de bestemming op en bewaart ze bij de reis, zodat
  * de geocoder niet bij elke aanvraag nodig is.
  */
-async function coordinaatVanBestemming(trip: TripRow): Promise<Coordinaat | null> {
+async function coordinaatVanBestemming(trip: TripRow): Promise<CoordinaatUitkomst> {
   if (trip.bestemming_lat !== null && trip.bestemming_lon !== null) {
-    return { lat: trip.bestemming_lat, lon: trip.bestemming_lon };
+    return { coordinaat: { lat: trip.bestemming_lat, lon: trip.bestemming_lon } };
   }
-  const gevonden = await zoekCoordinaat(trip.bestemming, trip.land);
-  if (gevonden === null) return null;
+  const uitkomst = await zoekCoordinaat(trip.bestemming, trip.land);
+  if ("fout" in uitkomst) return uitkomst;
   await query(`UPDATE trip SET bestemming_lat = $2, bestemming_lon = $3 WHERE id = $1`, [
     trip.id,
-    gevonden.lat,
-    gevonden.lon,
+    uitkomst.coordinaat.lat,
+    uitkomst.coordinaat.lon,
   ]);
-  return gevonden;
+  return uitkomst;
 }
 
-async function coordinaatVanThuis(trip: TripRow): Promise<Coordinaat | null> {
-  if (trip.thuisplaats === null) return null;
+async function coordinaatVanThuis(trip: TripRow): Promise<CoordinaatUitkomst> {
+  if (trip.thuisplaats === null) return { fout: "niet-gevonden" };
   if (trip.thuis_lat !== null && trip.thuis_lon !== null) {
-    return { lat: trip.thuis_lat, lon: trip.thuis_lon };
+    return { coordinaat: { lat: trip.thuis_lat, lon: trip.thuis_lon } };
   }
-  const gevonden = await zoekCoordinaat(trip.thuisplaats, trip.thuisland);
-  if (gevonden === null) return null;
+  const uitkomst = await zoekCoordinaat(trip.thuisplaats, trip.thuisland);
+  if ("fout" in uitkomst) return uitkomst;
   await query(`UPDATE trip SET thuis_lat = $2, thuis_lon = $3 WHERE id = $1`, [
     trip.id,
-    gevonden.lat,
-    gevonden.lon,
+    uitkomst.coordinaat.lat,
+    uitkomst.coordinaat.lon,
   ]);
-  return gevonden;
+  return uitkomst;
+}
+
+/** Een mislukte coördinaat naar de reden die de app aan de gebruiker toont. */
+function redenVan(uitkomst: { fout: "niet-gevonden" | "onbereikbaar" }): Reden {
+  return uitkomst.fout === "onbereikbaar" ? "dienst-onbereikbaar" : "plaats-niet-gevonden";
 }
 
 /**
@@ -73,19 +79,19 @@ async function coordinaatVanEtappe(stop: StopRow, land: string | null): Promise<
     return { lat: stop.lat, lon: stop.lon };
   }
   const zoekterm = stop.adres === null ? stop.plaats : `${stop.adres}, ${stop.plaats}`;
-  let gevonden = await zoekCoordinaat(zoekterm, land);
+  let uitkomst = await zoekCoordinaat(zoekterm, land);
   // Levert het volledige adres niets op, dan is de plaatsnaam nog altijd beter
   // dan een gat in de route.
-  if (gevonden === null && stop.adres !== null) {
-    gevonden = await zoekCoordinaat(stop.plaats, land);
+  if ("fout" in uitkomst && uitkomst.fout === "niet-gevonden" && stop.adres !== null) {
+    uitkomst = await zoekCoordinaat(stop.plaats, land);
   }
-  if (gevonden === null) return null;
+  if ("fout" in uitkomst) return null;
   await query(`UPDATE stop SET lat = $2, lon = $3 WHERE id = $1`, [
     stop.id,
-    gevonden.lat,
-    gevonden.lon,
+    uitkomst.coordinaat.lat,
+    uitkomst.coordinaat.lon,
   ]);
-  return gevonden;
+  return uitkomst.coordinaat;
 }
 
 /**
@@ -99,11 +105,20 @@ async function routePunten(
   if (!config.extern.enabled) return { fout: "uitgeschakeld" };
   if (trip.thuisplaats === null) return { fout: "geen-thuisplaats" };
 
-  const [thuisCoord, bestemmingCoord] = await Promise.all([
+  const [thuis, bestemming] = await Promise.all([
     coordinaatVanThuis(trip),
     coordinaatVanBestemming(trip),
   ]);
-  if (thuisCoord === null || bestemmingCoord === null) return { fout: "plaats-niet-gevonden" };
+  // Een onbereikbare dienst weegt zwaarder dan een onbekende plaatsnaam: bij het
+  // eerste kan de gebruiker niets doen, bij het tweede wel.
+  if ("fout" in thuis && thuis.fout === "onbereikbaar") return { fout: "dienst-onbereikbaar" };
+  if ("fout" in bestemming && bestemming.fout === "onbereikbaar") {
+    return { fout: "dienst-onbereikbaar" };
+  }
+  if ("fout" in thuis) return { fout: redenVan(thuis) };
+  if ("fout" in bestemming) return { fout: redenVan(bestemming) };
+  const thuisCoord = thuis.coordinaat;
+  const bestemmingCoord = bestemming.coordinaat;
 
   const overnachtingen = await query<StopRow>(
     `SELECT id, trip_id, plaats, tijd, opmerking, volgorde, overnachting, adres, nachten, lat, lon
@@ -139,24 +154,37 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
       return { bestemming: null, thuis: null, reden: "uitgeschakeld" satisfies Reden };
     }
 
-    const [bestemmingCoord, thuisCoord] = await Promise.all([
+    const [bestemmingUitkomst, thuisUitkomst] = await Promise.all([
       coordinaatVanBestemming(trip),
       coordinaatVanThuis(trip),
     ]);
 
     const [bestemming, thuis] = await Promise.all([
-      bestemmingCoord === null
+      "fout" in bestemmingUitkomst
         ? Promise.resolve(null)
-        : haalWeer(trip.bestemming, bestemmingCoord, trip.vertrekdatum, trip.terugdatum),
-      thuisCoord === null || trip.thuisplaats === null
+        : haalWeer(
+            trip.bestemming,
+            bestemmingUitkomst.coordinaat,
+            trip.vertrekdatum,
+            trip.terugdatum,
+          ),
+      "fout" in thuisUitkomst || trip.thuisplaats === null
         ? Promise.resolve(null)
-        : haalWeer(trip.thuisplaats, thuisCoord, trip.vertrekdatum, trip.terugdatum),
+        : haalWeer(trip.thuisplaats, thuisUitkomst.coordinaat, trip.vertrekdatum, trip.terugdatum),
     ]);
 
     return {
       bestemming,
       thuis,
-      reden: reden(bestemming, thuis, trip.thuisplaats !== null, bestemmingCoord !== null),
+      // Een reden per plaats: het weer thuis kan lukken terwijl de bestemming
+      // mislukt. Zonder dit onderscheid ziet de gebruiker één kolom en hoort hij
+      // niet waarom de andere ontbreekt.
+      bestemmingReden: perPlaatsReden(bestemmingUitkomst, bestemming),
+      thuisReden:
+        trip.thuisplaats === null
+          ? ("geen-thuisplaats" satisfies Reden)
+          : perPlaatsReden(thuisUitkomst, thuis),
+      reden: weerReden(trip, bestemmingUitkomst, bestemming, thuis),
     };
   });
 
@@ -217,14 +245,28 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
   });
 };
 
-function reden(
+/** Waarom deze ene plaats wel of geen reeks opleverde. */
+function perPlaatsReden(uitkomst: CoordinaatUitkomst, reeks: WeerReeks | null): Reden {
+  if (reeks !== null) return "ok";
+  if ("fout" in uitkomst) return redenVan(uitkomst);
+  // De coördinaat was er wel, dus het is de weerdienst die niet antwoordde.
+  return "dienst-onbereikbaar";
+}
+
+/**
+ * Waarom er in het geheel geen weergegevens zijn. Eén reeks is genoeg om "ok"
+ * te zijn: het weer op de bestemming is bruikbaar ook als de thuisplaats nog
+ * leeg is.
+ */
+function weerReden(
+  trip: TripRow,
+  bestemmingUitkomst: CoordinaatUitkomst,
   bestemming: WeerReeks | null,
   thuis: WeerReeks | null,
-  heeftThuisplaats: boolean,
-  bestemmingGevonden: boolean,
 ): Reden {
   if (bestemming !== null || thuis !== null) return "ok";
-  if (!bestemmingGevonden) return "plaats-niet-gevonden";
-  if (!heeftThuisplaats) return "geen-thuisplaats";
+  if ("fout" in bestemmingUitkomst) return redenVan(bestemmingUitkomst);
+  if (trip.thuisplaats === null) return "geen-thuisplaats";
+  // De coördinaten waren er wel, dus het is de weerdienst die niet antwoordde.
   return "dienst-onbereikbaar";
 }
