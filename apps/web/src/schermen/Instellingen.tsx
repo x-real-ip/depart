@@ -25,6 +25,8 @@ export function Instellingen({
   const [bestemming, setBestemming] = useState(trip.bestemming);
   const [land, setLand] = useState(trip.land);
   const [regio, setRegio] = useState(trip.regio ?? "");
+  const [thuisplaats, setThuisplaats] = useState(trip.thuisplaats ?? "");
+  const [thuisland, setThuisland] = useState(trip.thuisland ?? "Nederland");
   const [vertrekdatum, setVertrekdatum] = useState(trip.vertrekdatum);
   const [terugdatum, setTerugdatum] = useState(trip.terugdatum);
   const [campingNaam, setCampingNaam] = useState(trip.campingNaam ?? "");
@@ -106,6 +108,37 @@ export function Instellingen({
             onChange={(event) => setRegio(event.target.value)}
           />
         </Veld>
+
+        {/* Vertrekpunt voor de route en plaats voor het weer thuis. */}
+        <div className="grid grid-cols-2 gap-3">
+          <Veld
+            label="Thuisplaats"
+            verplicht
+            ingevuld={thuisplaats.trim() !== ""}
+            hint="Waar de reis begint."
+          >
+            <input
+              className={INVOER_STIJL}
+              placeholder="Utrecht"
+              value={thuisplaats}
+              onChange={(event) => setThuisplaats(event.target.value)}
+            />
+          </Veld>
+          <Veld label="Land van thuis">
+            <select
+              className={INVOER_STIJL}
+              value={BEKENDE_LANDEN.includes(thuisland) ? thuisland : ""}
+              onChange={(event) => setThuisland(event.target.value)}
+            >
+              {!BEKENDE_LANDEN.includes(thuisland) && <option value="">{thuisland}</option>}
+              {BEKENDE_LANDEN.map((naamVanLand) => (
+                <option key={naamVanLand} value={naamVanLand}>
+                  {naamVanLand}
+                </option>
+              ))}
+            </select>
+          </Veld>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Veld label="Vertrek">
@@ -198,6 +231,8 @@ export function Instellingen({
                 bestemming: bestemming.trim(),
                 land: land.trim(),
                 regio: regio.trim() === "" ? null : regio.trim(),
+                thuisplaats: thuisplaats.trim() === "" ? null : thuisplaats.trim(),
+                thuisland: thuisland.trim() === "" ? null : thuisland.trim(),
                 vertrekdatum,
                 terugdatum,
                 campingNaam: campingNaam.trim() === "" ? null : campingNaam.trim(),
