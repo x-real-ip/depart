@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { query, queryOne, transaction } from "../db.js";
 import { toContact, toStop, type ContactRow, type StopRow } from "../types.js";
-import { Fields, NotFoundError, ValidationError, pathUuid } from "../validate.js";
+import { Fields, NotFoundError, ValidationError, leesCoordinaatPaar, pathUuid } from "../validate.js";
 import { haalTrip } from "./trips.js";
 
 const STOP_KOLOMMEN = `
@@ -37,10 +37,14 @@ export const onderwegRoutes: FastifyPluginAsync = async (app) => {
 
     const overnachting = fields.has("overnachting") ? fields.boolean("overnachting") : false;
     const nachten = leesNachten(fields, overnachting);
+    // Komt het adres van de autocomplete, dan is het geverifieerd en gaat de
+    // coördinaat direct mee; zonder coördinaat zoekt de app het adres later
+    // zelf op (onveranderd bestaand gedrag voor wie vrij typt).
+    const coordinaat = leesCoordinaatPaar(fields, "lat", "lon");
 
     const row = await queryOne<StopRow>(
-      `INSERT INTO stop (trip_id, plaats, tijd, opmerking, volgorde, overnachting, adres, nachten)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${STOP_KOLOMMEN}`,
+      `INSERT INTO stop (trip_id, plaats, tijd, opmerking, volgorde, overnachting, adres, nachten, lat, lon)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ${STOP_KOLOMMEN}`,
       [
         tripId,
         fields.text("plaats", { max: 120 }),
@@ -50,6 +54,8 @@ export const onderwegRoutes: FastifyPluginAsync = async (app) => {
         overnachting,
         fields.optionalText("adres", { max: 300 }),
         nachten,
+        coordinaat.lat,
+        coordinaat.lon,
       ],
     );
     reply.code(201);
@@ -77,19 +83,22 @@ export const onderwegRoutes: FastifyPluginAsync = async (app) => {
       ? leesNachten(fields, overnachting, bestaand.nachten)
       : bestaand.nachten;
 
-    // Bij een andere plaats of een ander adres kloppen de opgezochte
-    // coördinaten niet meer.
+    // Verse coördinaten van de autocomplete zijn geverifieerd en gaan direct
+    // mee. Zonder die coördinaten: bij een andere plaats of ander adres
+    // kloppen de oude niet meer en worden ze leeggemaakt (zelfde patroon als
+    // bij de reis zelf); anders blijven ze staan.
+    const nieuweCoordinaat = leesCoordinaatPaar(fields, "lat", "lon");
     const behoudCoordinaten = plaats === bestaand.plaats && adres === bestaand.adres;
+    const lat = nieuweCoordinaat.lat ?? (behoudCoordinaten ? bestaand.lat : null);
+    const lon = nieuweCoordinaat.lon ?? (behoudCoordinaten ? bestaand.lon : null);
 
     const row = await queryOne<StopRow>(
       `UPDATE stop
        SET plaats = $2, tijd = $3, opmerking = $4, adres = $5,
-           overnachting = $6, nachten = $7,
-           lat = CASE WHEN $8 THEN lat ELSE NULL END,
-           lon = CASE WHEN $8 THEN lon ELSE NULL END
+           overnachting = $6, nachten = $7, lat = $8, lon = $9
        WHERE id = $1
        RETURNING ${STOP_KOLOMMEN}`,
-      [id, plaats, tijd, opmerking, adres, overnachting, nachten, behoudCoordinaten],
+      [id, plaats, tijd, opmerking, adres, overnachting, nachten, lat, lon],
     );
     return toStop(row!);
   });

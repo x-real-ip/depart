@@ -2,6 +2,7 @@ import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { MAX_UPLOAD_BYTES, config } from "./config.js";
 import { pool, waitForDatabase } from "./db.js";
+import { adresRoutes } from "./routes/adressen.js";
 import { documentRoutes } from "./routes/documents.js";
 import { packItemRoutes } from "./routes/packItems.js";
 import { reisinfoRoutes } from "./routes/reisinfo.js";
@@ -19,6 +20,17 @@ const app = Fastify({
     redact: {
       paths: ["req.headers.authorization", "req.headers.cookie"],
       censor: "[weggelaten]",
+    },
+    // De querystring hoort niet in het logbestand: /api/adressen?q=... kan een
+    // thuisadres bevatten. Alleen het pad wordt gelogd, nooit de parameters.
+    serializers: {
+      req(request) {
+        return {
+          method: request.method,
+          url: request.url.split("?")[0],
+          hostname: request.hostname,
+        };
+      },
     },
   },
   bodyLimit: 1024 * 1024,
@@ -106,6 +118,7 @@ await app.register(
     await api.register(onderwegRoutes);
     await api.register(documentRoutes);
     await api.register(reisinfoRoutes);
+    await api.register(adresRoutes);
   },
   { prefix: "/api" },
 );

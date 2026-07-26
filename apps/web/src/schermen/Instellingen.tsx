@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AdresVeld } from "../components/AdresVeld.tsx";
 import {
   Bevestiging,
   INVOER_STIJL,
@@ -27,11 +28,27 @@ export function Instellingen({
   const [regio, setRegio] = useState(trip.regio ?? "");
   const [thuisplaats, setThuisplaats] = useState(trip.thuisplaats ?? "");
   const [thuisland, setThuisland] = useState(trip.thuisland ?? "Nederland");
+  const [thuisAdres, setThuisAdres] = useState(trip.thuisAdres ?? "");
+  // Alleen gevuld als er in deze sessie een verse suggestie is gekozen — dat
+  // is het enige moment waarop de app zelf coördinaten in handen heeft. Blijft
+  // dit adres ongewijzigd, dan hoeven er geen nieuwe coördinaten mee: de
+  // bestaande blijven gewoon staan.
+  const [thuisCoordVers, setThuisCoordVers] = useState<{ lat: number; lon: number } | null>(null);
+  const thuisGeverifieerd =
+    thuisCoordVers !== null || (thuisAdres === (trip.thuisAdres ?? "") && trip.thuisAdresGeverifieerd);
+
   const [vertrekdatum, setVertrekdatum] = useState(trip.vertrekdatum);
   const [terugdatum, setTerugdatum] = useState(trip.terugdatum);
   const [campingNaam, setCampingNaam] = useState(trip.campingNaam ?? "");
   const [plaatsnummer, setPlaatsnummer] = useState(trip.plaatsnummer ?? "");
   const [plaatsInfo, setPlaatsInfo] = useState(trip.plaatsInfo ?? "");
+  const [bestemmingAdres, setBestemmingAdres] = useState(trip.bestemmingAdres ?? "");
+  const [bestemmingCoordVers, setBestemmingCoordVers] = useState<{ lat: number; lon: number } | null>(
+    null,
+  );
+  const bestemmingGeverifieerd =
+    bestemmingCoordVers !== null ||
+    (bestemmingAdres === (trip.bestemmingAdres ?? "") && trip.bestemmingAdresGeverifieerd);
   const [afstandKm, setAfstandKm] = useState(trip.afstandKm?.toString() ?? "");
   const [rijtijdMin, setRijtijdMin] = useState(trip.rijtijdMin?.toString() ?? "");
   const [tolKosten, setTolKosten] = useState(trip.tolKosten?.toString() ?? "");
@@ -159,6 +176,22 @@ export function Instellingen({
             />
           </Veld>
         </div>
+
+        <AdresVeld
+          label="Preciezer thuisadres"
+          hint="Optioneel. Voor een nauwkeurigere route en op de kaart."
+          placeholder="Kerkstraat 12, Utrecht"
+          waarde={thuisAdres}
+          geverifieerd={thuisGeverifieerd}
+          onWijzig={(tekst) => {
+            setThuisAdres(tekst);
+            setThuisCoordVers(null);
+          }}
+          onKies={(suggestie) => {
+            setThuisAdres(suggestie.label);
+            setThuisCoordVers({ lat: suggestie.lat, lon: suggestie.lon });
+          }}
+        />
       </Kaart>
 
       <Kaart className="space-y-3">
@@ -187,6 +220,22 @@ export function Instellingen({
             onChange={(event) => setPlaatsInfo(event.target.value)}
           />
         </Veld>
+
+        <AdresVeld
+          label="Adres van de camping"
+          hint="Optioneel. Nauwkeuriger dan de plaatsnaam voor de route en op de kaart."
+          placeholder="Camping Le Belvedere, Annecy"
+          waarde={bestemmingAdres}
+          geverifieerd={bestemmingGeverifieerd}
+          onWijzig={(tekst) => {
+            setBestemmingAdres(tekst);
+            setBestemmingCoordVers(null);
+          }}
+          onKies={(suggestie) => {
+            setBestemmingAdres(suggestie.label);
+            setBestemmingCoordVers({ lat: suggestie.lat, lon: suggestie.lon });
+          }}
+        />
       </Kaart>
 
       <Kaart className="space-y-3">
@@ -233,11 +282,21 @@ export function Instellingen({
                 regio: regio.trim() === "" ? null : regio.trim(),
                 thuisplaats: thuisplaats.trim() === "" ? null : thuisplaats.trim(),
                 thuisland: thuisland.trim() === "" ? null : thuisland.trim(),
+                thuisAdres: thuisAdres.trim() === "" ? null : thuisAdres.trim(),
+                // Alleen meesturen als er in deze sessie echt een nieuwe
+                // suggestie gekozen is — anders blijven bestaande coördinaten
+                // gewoon staan (of vervallen ze, als het adres wél veranderd
+                // is zonder nieuwe keuze; dat regelt de api zelf).
+                thuisLat: thuisCoordVers?.lat,
+                thuisLon: thuisCoordVers?.lon,
                 vertrekdatum,
                 terugdatum,
                 campingNaam: campingNaam.trim() === "" ? null : campingNaam.trim(),
                 plaatsnummer: plaatsnummer.trim() === "" ? null : plaatsnummer.trim(),
                 plaatsInfo: plaatsInfo.trim() === "" ? null : plaatsInfo.trim(),
+                bestemmingAdres: bestemmingAdres.trim() === "" ? null : bestemmingAdres.trim(),
+                bestemmingLat: bestemmingCoordVers?.lat,
+                bestemmingLon: bestemmingCoordVers?.lon,
                 afstandKm: getal(afstandKm),
                 rijtijdMin: getal(rijtijdMin),
                 tolKosten: getal(tolKosten),

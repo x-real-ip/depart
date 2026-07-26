@@ -54,6 +54,20 @@ export interface RouteInfo {
   etappes: RouteEtappe[];
   totaalAfstandKm: number;
   totaalRijtijdMin: number;
+  /** De weg zelf, als [lat, lon]-punten, voor het tekenen van de lijn op de kaart. */
+  geometrie: [number, number][];
+}
+
+/** Een adres-suggestie van de autocomplete: altijd met coördinaten. */
+export interface AdresSuggestie {
+  label: string;
+  straat: string | null;
+  huisnummer: string | null;
+  postcode: string | null;
+  plaats: string | null;
+  land: string | null;
+  lat: number;
+  lon: number;
 }
 
 // --- Cache ----------------------------------------------------------------
@@ -236,6 +250,80 @@ function landnaarCode(land: string): string | null {
   return LANDCODES[land.trim().toLowerCase()] ?? null;
 }
 
+// --- Adres-autocomplete -----------------------------------------------------
+
+interface PhotonEigenschappen {
+  name?: string;
+  housenumber?: string;
+  street?: string;
+  postcode?: string;
+  city?: string;
+  country?: string;
+}
+
+interface PhotonAntwoord {
+  features?: { properties: PhotonEigenschappen; geometry: { coordinates: [number, number] } }[];
+}
+
+/**
+ * Adressen met autocomplete, op naam, straat of plek (zoals een camping) —
+ * niet alleen op stad, zoals de geocoding hierboven. Een suggestie komt altijd
+ * met coördinaten mee: kiest de gebruiker een suggestie, dan is het adres
+ * daarmee bevestigd. Typt hij verder zonder te kiezen, dan blijft het
+ * onbevestigd — dat onderscheid bewaakt de app zelf, niet deze functie.
+ *
+ * Geen resultaten of een onbereikbare dienst geven allebei een lege lijst: een
+ * haperende autocomplete mag het typen niet in de weg zitten.
+ */
+export async function zoekAdressen(zoekterm: string): Promise<AdresSuggestie[]> {
+  const trimmed = zoekterm.trim();
+  if (trimmed.length < 3) return [];
+
+  const url = new URL(config.extern.addressAutocompleteUrl);
+  url.searchParams.set("q", trimmed);
+  url.searchParams.set("limit", "8");
+
+  // Geen zoekterm loggen: die kan een thuisadres zijn.
+  const antwoord = await haalJson<PhotonAntwoord>(url.toString(), "adressen");
+  if (!antwoord.ok) return [];
+
+  return (antwoord.data.features ?? []).map((feature) => bouwSuggestie(feature.properties, feature.geometry.coordinates));
+}
+
+function bouwSuggestie(
+  eigenschappen: PhotonEigenschappen,
+  coordinaten: [number, number],
+): AdresSuggestie {
+  const straatDeel = [eigenschappen.street, eigenschappen.housenumber].filter(Boolean).join(" ");
+  // Bij een plek (camping, hotel) staat het adres los van de naam; bij een kaal
+  // huisadres is er geen naam en volstaat de straat.
+  const naamDeel =
+    eigenschappen.name !== undefined && eigenschappen.name !== eigenschappen.city
+      ? eigenschappen.name
+      : undefined;
+  const kern = [naamDeel, straatDeel || undefined].filter(Boolean).join(", ");
+
+  const postcode = eigenschappen.postcode?.split(";")[0]?.trim() ?? undefined;
+  const plaatsDeel = [postcode, eigenschappen.city].filter(Boolean).join(" ");
+
+  const delen = [kern, plaatsDeel, eigenschappen.country].filter(
+    (deel): deel is string => deel !== undefined && deel !== "",
+  );
+  // Achter elkaar dubbele delen (stad die ook als naam terugkomt) wegwerken.
+  const uniek = delen.filter((deel, index) => index === 0 || deel !== delen[index - 1]);
+
+  return {
+    label: uniek.length > 0 ? uniek.join(", ") : "Onbekend adres",
+    straat: eigenschappen.street ?? null,
+    huisnummer: eigenschappen.housenumber ?? null,
+    postcode: postcode ?? null,
+    plaats: eigenschappen.city ?? null,
+    land: eigenschappen.country ?? null,
+    lat: coordinaten[1],
+    lon: coordinaten[0],
+  };
+}
+
 // --- Weer ------------------------------------------------------------------
 
 interface WeerAntwoord {
@@ -315,7 +403,10 @@ export async function haalWeer(
 
 interface OsrmAntwoord {
   code?: string;
-  routes?: { legs: { distance: number; duration: number }[] }[];
+  routes?: {
+    legs: { distance: number; duration: number }[];
+    geometry?: { coordinates: [number, number][] };
+  }[];
 }
 
 /**
@@ -335,10 +426,15 @@ export async function haalRoute(
   const bewaard = uitCache<RouteInfo>(sleutel);
   if (bewaard !== undefined) return hernoem(bewaard, punten);
 
-  const url = `${config.extern.routingUrl.replace(/\/$/, "")}/route/v1/driving/${coordinaten}?overview=false`;
+  // overview=simplified geeft de weg zelf mee (nodig om de route als lijn op
+  // de kaart te tekenen) maar dan vereenvoudigd voor weergave op klein
+  // formaat — "full" geeft elk bochtpunt en levert duizenden punten op voor
+  // wat maar een paar honderd pixels breed getoond wordt.
+  const url = `${config.extern.routingUrl.replace(/\/$/, "")}/route/v1/driving/${coordinaten}?overview=simplified&geometries=geojson`;
   const antwoord = await haalJson<OsrmAntwoord>(url, "route");
   if (!antwoord.ok) return null;
-  const legs = antwoord.data.routes?.[0]?.legs;
+  const route = antwoord.data.routes?.[0];
+  const legs = route?.legs;
   if (antwoord.data.code !== "Ok" || legs === undefined || legs.length !== punten.length - 1) {
     return null;
   }
@@ -350,10 +446,16 @@ export async function haalRoute(
     rijtijdMin: Math.round(leg.duration / 60),
   }));
 
+  // OSRM geeft [lon, lat]; Leaflet wil [lat, lon].
+  const geometrie: [number, number][] = (route?.geometry?.coordinates ?? []).map(
+    ([lon, lat]) => [lat, lon],
+  );
+
   const info: RouteInfo = {
     etappes,
     totaalAfstandKm: etappes.reduce((som, etappe) => som + etappe.afstandKm, 0),
     totaalRijtijdMin: etappes.reduce((som, etappe) => som + etappe.rijtijdMin, 0),
+    geometrie,
   };
   inCache(sleutel, info);
   return info;

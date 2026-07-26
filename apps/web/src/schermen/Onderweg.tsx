@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { AdresVeld } from "../components/AdresVeld.tsx";
+import { Landkaart } from "../components/Landkaart.tsx";
 import {
   INVOER_STIJL,
   Kaart,
@@ -184,6 +186,14 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
 
       {/* Route van huis via de overnachtingen naar de bestemming. */}
       <RouteEtappes route={route} />
+
+      {/* De route als kaart: vertrekpunt, overnachtingen en bestemming. */}
+      {route !== null && route.punten.length > 0 && (
+        <Kaart>
+          <KaartKop>Kaart</KaartKop>
+          <Landkaart punten={route.punten} geometrie={route.route?.geometrie} />
+        </Kaart>
+      )}
 
       <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
         {/* Etappes, te verslepen om te sorteren. */}
@@ -535,6 +545,11 @@ function EtappeFormulier({
   const [overnachting, setOvernachting] = useState(begin?.overnachting ?? false);
   const [adres, setAdres] = useState(begin?.adres ?? "");
   const [nachten, setNachten] = useState(String(begin?.nachten ?? 1));
+  // Alleen gevuld na een verse keuze uit de autocomplete in deze sessie —
+  // anders blijven bestaande coördinaten gewoon staan (regelt de api zelf).
+  const [coordVers, setCoordVers] = useState<{ lat: number; lon: number } | null>(null);
+  const adresGeverifieerd =
+    coordVers !== null || (adres === (begin?.adres ?? "") && (begin?.adresGeverifieerd ?? false));
 
   return (
     <div className="space-y-2">
@@ -582,14 +597,21 @@ function EtappeFormulier({
 
       {overnachting && (
         <div className="grid grid-cols-[1fr_auto] gap-2">
-          <Veld label="Adres" hint="Nauwkeuriger dan alleen de plaatsnaam.">
-            <input
-              className={INVOER_STIJL}
-              placeholder="Camping de l'Ile, Rue X 12"
-              value={adres}
-              onChange={(event) => setAdres(event.target.value)}
-            />
-          </Veld>
+          <AdresVeld
+            label="Adres"
+            hint="Kies een suggestie voor de route en de kaart."
+            placeholder="Camping de l'Ile, Rue X 12"
+            waarde={adres}
+            geverifieerd={adresGeverifieerd}
+            onWijzig={(tekst) => {
+              setAdres(tekst);
+              setCoordVers(null);
+            }}
+            onKies={(suggestie) => {
+              setAdres(suggestie.label);
+              setCoordVers({ lat: suggestie.lat, lon: suggestie.lon });
+            }}
+          />
           <Veld label="Nachten">
             <input
               className={`${INVOER_STIJL} w-20`}
@@ -624,6 +646,8 @@ function EtappeFormulier({
               overnachting,
               adres: overnachting && adres.trim() !== "" ? adres.trim() : null,
               nachten: overnachting ? Math.max(1, Number(nachten) || 1) : null,
+              lat: overnachting ? coordVers?.lat : undefined,
+              lon: overnachting ? coordVers?.lon : undefined,
             });
             if (leegNa) {
               setPlaats("");
@@ -632,6 +656,7 @@ function EtappeFormulier({
               setOvernachting(false);
               setAdres("");
               setNachten("1");
+              setCoordVers(null);
             }
           }}
         >

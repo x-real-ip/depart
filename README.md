@@ -20,23 +20,37 @@ Meerdere reizen kunnen naast elkaar bestaan; bovenin wissel je ertussen.
 
 ## Actuele reisinformatie
 
-Twee dingen komen van buiten, van diensten die geen sleutel nodig hebben:
+Drie dingen komen van buiten, van diensten die geen sleutel nodig hebben:
 
 - **Weer** — de dag- en nachttemperatuur, windkracht en regenkans voor elke dag
   van het verblijf, zowel op de bestemming als thuis (Open-Meteo). Ligt de reis
   verder weg dan zestien dagen, dan laat het scherm de komende week zien en zegt
   het dat erbij.
-- **Route** — de rijafstand en rijtijd van thuis, via elke overnachting
-  onderweg, naar de eindbestemming (OSRM). Een tussenstop zonder overnachting
-  telt niet mee: die ligt op de route en zou de etappes onnodig opdelen.
+- **Route en kaart** — de rijafstand en rijtijd van thuis, via elke
+  overnachting onderweg, naar de eindbestemming (OSRM), met een kaart
+  (OpenStreetMap) waarop het vertrekpunt, elke overnachting en de bestemming
+  als gekleurde stippen staan, verbonden met de echte weg. Een tussenstop
+  zonder overnachting telt niet mee: die ligt op de route en zou de etappes
+  onnodig opdelen.
+- **Adres-autocomplete** — bij het thuisadres, de bestemming (bijvoorbeeld de
+  camping) en een overnachting kun je typen en uit suggesties kiezen (Photon,
+  gebouwd op OpenStreetMap). Kies je een suggestie, dan is het adres
+  **bevestigd**: er zijn coördinaten bekend, die de route en de kaart
+  nauwkeuriger maken dan het middelpunt van een stad. Typ je verder zonder te
+  kiezen, dan geldt het weer als onbevestigd, en zoekt de app bij de volgende
+  weer- of route-aanvraag de plaatsnaam zelf op — precies zoals wanneer je de
+  autocomplete niet gebruikt.
 
-Coördinaten worden één keer opgezocht en bij de reis bewaard. Wijzig je een
-plaatsnaam, dan vervallen ze en worden ze opnieuw opgezocht.
+Coördinaten worden bij de reis of de etappe bewaard, niet elke keer opnieuw
+opgezocht. Wijzig je een plaatsnaam of adres zonder een nieuwe suggestie te
+kiezen, dan vervallen de oude coördinaten en wordt er later opnieuw gezocht.
 
 Een dienst die eruit ligt kan de app niet stukmaken: de endpoints geven altijd
-een antwoord, met daarin waarom er geen gegevens zijn. Er gaat nooit meer naar
-buiten dan een plaatsnaam of coördinaat — geen reisnamen, reizigers of
-documenten.
+een antwoord, met daarin waarom er geen gegevens zijn — en dat is nadrukkelijk
+iets anders dan "deze plaatsnaam bestaat niet". Er gaat nooit meer naar buiten
+dan een plaatsnaam, adres of coördinaat — geen reisnamen, reizigers of
+documenten, en de zoekterm van de autocomplete wordt zelfs nergens gelogd
+(die kan een thuisadres zijn).
 
 ## Opbouw
 
@@ -51,6 +65,11 @@ De frontend praat uitsluitend via `apps/web/src/lib/api.ts` met de server; de
 rest van de app raakt `fetch` nooit aan. nginx (productie) of de Vite-proxy
 (lokaal) stuurt `/api` door naar de api, dus er staat nergens een hostnaam in de
 code.
+
+De kaart gebruikt [Leaflet](https://leafletjs.com/) met OpenStreetMap-tegels —
+geen sleutel nodig, maar wel een merkbare toevoeging aan de bundelgrootte
+(~125 kB gzipped, was ~75 kB). Dat is de prijs van een kaart zonder sleutel of
+eigen tegelserver.
 
 ## Lokaal draaien
 
@@ -83,6 +102,7 @@ De api leest alles uit de omgeving; niets is hardcoded.
 | `GEOCODING_URL`        | nee       | Open-Meteo geocoding; overschrijf voor een eigen instantie      |
 | `WEATHER_URL`          | nee       | Open-Meteo forecast                                             |
 | `ROUTING_URL`          | nee       | OSRM; overschrijf voor een eigen router                         |
+| `ADDRESS_AUTOCOMPLETE_URL` | nee   | Photon; adres-autocomplete voor thuisadres, bestemming en overnachtingen |
 | `EXTERN_CACHE_MINUTES` | nee       | Hoe lang een antwoord in het geheugen blijft (standaard 30)      |
 
 De frontend krijgt `API_TOKEN` en `APP_TITLE` bij het opstarten van de container
@@ -101,6 +121,16 @@ auto, zoals de groene kaart of de gasfles.
 Een `stop` is een tussenstop van een paar uur, óf een overnachting onderweg
 (`overnachting = true`, met een adres en een aantal nachten). Alleen
 overnachtingen zijn punten in de route.
+
+Naast `thuisplaats`/`bestemming` (stad, verplicht, voor het weer en de
+koptekst) is er `thuisadres`/`bestemming_adres` (optioneel, preciezer — voor de
+route en de kaart). Coördinaten (`thuis_lat`/`thuis_lon`,
+`bestemming_lat`/`bestemming_lon`, en `lat`/`lon` op `stop`) komen op twee
+manieren tot stand: **geverifieerd**, via een gekozen suggestie uit de
+adres-autocomplete, of **lazy**, doordat de api de stad zelf opzoekt zodra het
+weer of de route nodig is. Beide leveren dezelfde kolommen op; het verschil zit
+in de `*Geverifieerd`-vlag die de api teruggeeft, puur informatief voor de
+interface.
 
 De **status van een document** staat niet in de database maar wordt berekend:
 
@@ -140,8 +170,10 @@ Er staan paspoortscans in deze app. Daarom:
   tekstbestand dat `paspoort.pdf` heet komt er niet door.
 - **De naam op schijf komt niet van de gebruiker.** Bestanden heten
   `<documentId>.<ext>`; de naam die jij zag is alleen een label in de database.
-- **Er worden geen bestandsnamen, documentinhoud of de volledige `DATABASE_URL`
-  gelogd.** De `Authorization`- en `Cookie`-headers worden uit de logs geweerd.
+- **Er worden geen bestandsnamen, documentinhoud, adres-zoektermen of de
+  volledige `DATABASE_URL` gelogd.** De `Authorization`- en `Cookie`-headers
+  worden uit de logs geweerd, en van elke aanvraag alleen het pad — nooit de
+  querystring, want `/api/adressen?q=...` kan een thuisadres bevatten.
 - **Alleen de app kan bij de bestanden.** De api draait als uid/gid 3001 en het
   volume krijgt via `fsGroup` dezelfde eigenaar.
 

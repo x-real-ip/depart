@@ -11,7 +11,7 @@ import {
   type TravelerRow,
   type TripRow,
 } from "../types.js";
-import { Fields, NotFoundError, ValidationError, pathUuid } from "../validate.js";
+import { Fields, NotFoundError, ValidationError, leesCoordinaatPaar, pathUuid } from "../validate.js";
 
 export async function haalTrip(id: string): Promise<TripRow> {
   const row = await queryOne<TripRow>(`SELECT ${tripColumns} FROM trip WHERE id = $1`, [id]);
@@ -68,8 +68,9 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
         `INSERT INTO trip (naam, bestemming, land, regio, vertrekdatum, terugdatum,
                            camping_naam, plaatsnummer, plaats_info,
                            afstand_km, rijtijd_min, tol_kosten,
-                           thuisplaats, thuisland)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                           thuisplaats, thuisland, thuisadres, thuis_lat, thuis_lon,
+                           bestemming_adres, bestemming_lat, bestemming_lon)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
          RETURNING ${tripColumns}`,
         [
           waarden.naam,
@@ -86,6 +87,12 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
           waarden.tolKosten,
           waarden.thuisplaats,
           waarden.thuisland,
+          waarden.thuisAdres,
+          waarden.thuisLat,
+          waarden.thuisLon,
+          waarden.bestemmingAdres,
+          waarden.bestemmingLat,
+          waarden.bestemmingLon,
         ],
       );
       const row = created.rows[0]!;
@@ -119,6 +126,10 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
     if (fields.has("land")) kolommen["land"] = fields.text("land", { max: 120 });
     if (fields.has("thuisplaats")) kolommen["thuisplaats"] = fields.optionalText("thuisplaats", { max: 160 });
     if (fields.has("thuisland")) kolommen["thuisland"] = fields.optionalText("thuisland", { max: 120 });
+    if (fields.has("thuisAdres")) kolommen["thuisadres"] = fields.optionalText("thuisAdres", { max: 300 });
+    if (fields.has("bestemmingAdres")) {
+      kolommen["bestemming_adres"] = fields.optionalText("bestemmingAdres", { max: 300 });
+    }
     if (fields.has("regio")) kolommen["regio"] = fields.optionalText("regio", { max: 120 });
     if (fields.has("vertrekdatum")) kolommen["vertrekdatum"] = fields.date("vertrekdatum");
     if (fields.has("terugdatum")) kolommen["terugdatum"] = fields.date("terugdatum");
@@ -129,19 +140,33 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
     if (fields.has("rijtijdMin")) kolommen["rijtijd_min"] = fields.optionalNumber("rijtijdMin", { max: 100_000 });
     if (fields.has("tolKosten")) kolommen["tol_kosten"] = fields.optionalNumber("tolKosten", { max: 10_000 });
 
-    // Verandert een plaatsnaam, dan kloppen de eerder opgezochte coördinaten
-    // niet meer. Ze worden leeggemaakt en bij de volgende weer- of
-    // route-aanvraag opnieuw opgezocht.
-    if (
+    // Stuurt de autocomplete verse coördinaten mee, dan zijn die geverifieerd
+    // en gaan ze direct de database in — dat overschrijft de invalidatie
+    // hieronder. Verandert een plaatsnaam of het adres zonder nieuwe
+    // coördinaten, dan kloppen de oude niet meer en worden ze leeggemaakt; bij
+    // de volgende weer- of route-aanvraag zoekt de app de stad dan opnieuw op.
+    const bestemmingCoord = leesCoordinaatPaar(fields, "bestemmingLat", "bestemmingLon");
+    if (bestemmingCoord.lat !== null) {
+      kolommen["bestemming_lat"] = bestemmingCoord.lat;
+      kolommen["bestemming_lon"] = bestemmingCoord.lon;
+    } else if (
       (kolommen["bestemming"] !== undefined && kolommen["bestemming"] !== bestaand.bestemming) ||
-      (kolommen["land"] !== undefined && kolommen["land"] !== bestaand.land)
+      (kolommen["land"] !== undefined && kolommen["land"] !== bestaand.land) ||
+      (kolommen["bestemming_adres"] !== undefined &&
+        kolommen["bestemming_adres"] !== bestaand.bestemming_adres)
     ) {
       kolommen["bestemming_lat"] = null;
       kolommen["bestemming_lon"] = null;
     }
-    if (
+
+    const thuisCoord = leesCoordinaatPaar(fields, "thuisLat", "thuisLon");
+    if (thuisCoord.lat !== null) {
+      kolommen["thuis_lat"] = thuisCoord.lat;
+      kolommen["thuis_lon"] = thuisCoord.lon;
+    } else if (
       (kolommen["thuisplaats"] !== undefined && kolommen["thuisplaats"] !== bestaand.thuisplaats) ||
-      (kolommen["thuisland"] !== undefined && kolommen["thuisland"] !== bestaand.thuisland)
+      (kolommen["thuisland"] !== undefined && kolommen["thuisland"] !== bestaand.thuisland) ||
+      (kolommen["thuisadres"] !== undefined && kolommen["thuisadres"] !== bestaand.thuisadres)
     ) {
       kolommen["thuis_lat"] = null;
       kolommen["thuis_lon"] = null;
@@ -313,6 +338,8 @@ function leesTripVelden(fields: Fields) {
   if (terugdatum < vertrekdatum) {
     throw new ValidationError("De terugdatum kan niet voor de vertrekdatum liggen");
   }
+  const thuisCoord = leesCoordinaatPaar(fields, "thuisLat", "thuisLon");
+  const bestemmingCoord = leesCoordinaatPaar(fields, "bestemmingLat", "bestemmingLon");
   return {
     naam: fields.text("naam", { max: 120 }),
     bestemming: fields.text("bestemming", { max: 120 }),
@@ -328,5 +355,14 @@ function leesTripVelden(fields: Fields) {
     tolKosten: fields.optionalNumber("tolKosten", { max: 10_000 }),
     thuisplaats: fields.optionalText("thuisplaats", { max: 160 }),
     thuisland: fields.optionalText("thuisland", { max: 120 }),
+    // Preciezer adres, gekozen via de autocomplete. Komt er geen coördinaat
+    // mee, dan is er niets geverifieerd en zoekt de app later de stad zelf op
+    // — precies zoals wanneer deze velden helemaal niet zijn ingevuld.
+    thuisAdres: fields.optionalText("thuisAdres", { max: 300 }),
+    thuisLat: thuisCoord.lat,
+    thuisLon: thuisCoord.lon,
+    bestemmingAdres: fields.optionalText("bestemmingAdres", { max: 300 }),
+    bestemmingLat: bestemmingCoord.lat,
+    bestemmingLon: bestemmingCoord.lon,
   };
 }

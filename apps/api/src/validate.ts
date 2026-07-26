@@ -112,6 +112,16 @@ export class Fields {
     return parsed;
   }
 
+  /** Breedtegraad uit een adres-suggestie: -90 tot 90. */
+  optionalLat(name: string): number | null {
+    return this.optionalNumber(name, { min: -90, max: 90 });
+  }
+
+  /** Lengtegraad uit een adres-suggestie: -180 tot 180. */
+  optionalLon(name: string): number | null {
+    return this.optionalNumber(name, { min: -180, max: 180 });
+  }
+
   boolean(name: string): boolean {
     const value = this.data[name];
     if (typeof value !== "boolean") {
@@ -149,6 +159,25 @@ export class Fields {
       return entry;
     });
   }
+}
+
+/**
+ * Coördinaten horen als paar bij elkaar. Eén helft zonder de andere kan alleen
+ * ontstaan door een verkeerde aanroep — de autocomplete stuurt ze altijd
+ * samen — en dat moet duidelijk misgaan, niet stilzwijgend een halve
+ * coördinaat opslaan.
+ */
+export function leesCoordinaatPaar(
+  fields: Fields,
+  latVeld: string,
+  lonVeld: string,
+): { lat: number | null; lon: number | null } {
+  const lat = fields.optionalLat(latVeld);
+  const lon = fields.optionalLon(lonVeld);
+  if ((lat === null) !== (lon === null)) {
+    throw new ValidationError(`${latVeld} en ${lonVeld} horen samen opgegeven te worden`);
+  }
+  return { lat, lon };
 }
 
 /** Valideert een id uit het pad. */
