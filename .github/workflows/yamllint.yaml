@@ -1,0 +1,14 @@
+name: YAML Linter
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  yamllint:
+    uses: x-real-ip/github-actions/.github/workflows/yamllint.yaml@main

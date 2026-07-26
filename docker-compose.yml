@@ -1,0 +1,59 @@
+# De hele stack lokaal: database, api en frontend.
+# Kopieer eerst .env.example naar .env.
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Migraties als aparte stap, net als de initContainer in Kubernetes.
+  migrate:
+    build: ./apps/api
+    working_dir: /app
+    command:
+      ["node_modules/.bin/node-pg-migrate", "--migrations-dir", "migrations", "up"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: ./apps/api
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DOCUMENTS_PATH: /data/documents
+      API_TOKEN: ${API_TOKEN}
+      PORT: 8080
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - documents:/data/documents
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build: ./apps/web
+    environment:
+      BACKEND_URL: http://api:8080
+      API_TOKEN: ${API_TOKEN}
+      APP_TITLE: ${APP_TITLE:-Depart}
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  documents:

@@ -1,0 +1,22 @@
+---
+extends: default
+
+ignore: |
+  node_modules/
+  apps/*/node_modules/
+  apps/*/dist/
+
+rules:
+  # Regels mogen zo lang zijn als leesbaar is; kustomize-patches worden anders
+  # onnodig opgeknipt.
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+  # "on:" in een workflow is geen boolean.
+  truthy:
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  # Sommige bestanden beginnen met "---" (kustomize-stijl), andere niet.
+  # Beide zijn hier goed.
+  document-start: disable

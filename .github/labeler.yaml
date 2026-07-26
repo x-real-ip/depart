@@ -1,0 +1,22 @@
+---
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: "**/*.md"
+
+frontend:
+  - changed-files:
+      - any-glob-to-any-file: "apps/web/**"
+
+backend:
+  - changed-files:
+      - any-glob-to-any-file: "apps/api/**"
+
+infrastructure:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "ansible/**"
+          - "deploy/**"
+          - ".github/**"
+
+bug:
+  - head-branch: ["^fix", "fix"]

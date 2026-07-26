@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+/*
+ * Vertrekbord op een vliegveld, gecombineerd met kampeergroen. Rustig, veel
+ * witruimte, kaarten met afgeronde hoeken. De split-flap aftelklok is het enige
+ * element dat mag opvallen.
+ */
+@theme {
+  --color-navy: #12283c;
+  --color-navy-deep: #0b1b2b;
+  --color-amber: #ffb703;
+  --color-forest: #2f6b4f;
+  --color-canvas: #f5f2ec;
+  --color-ink: #1b2b36;
+  --color-slate: #647585;
+  --color-alert: #c94a3f;
+
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius-card: 16px;
+}
+
+@layer base {
+  html {
+    /* Voorkomt dat iOS de tekst opblaast bij het draaien van het toestel. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    /* Nooit horizontaal scrollen op een telefoon. */
+    overflow-x: hidden;
+  }
+
+  /* Zichtbare focus bij toetsenbordnavigatie, overal hetzelfde. */
+  :focus-visible {
+    outline: 3px solid var(--color-amber);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Alleen tonen wanneer er echt met het toetsenbord genavigeerd wordt. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@layer utilities {
+  /* Labels, cijfers: kapitalen met ruime letterafstand. */
+  .label-mono {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.6875rem;
+    font-weight: 500;
+  }
+
+  .kaart {
+    background-color: white;
+    border-radius: var(--radius-card);
+    border: 1px solid color-mix(in oklab, var(--color-slate) 18%, transparent);
+  }
+}
+
+/*
+ * De split-flap tegel klapt om wanneer het cijfer verandert. Bij
+ * prefers-reduced-motion wisselt het cijfer gewoon, zonder beweging.
+ */
+@keyframes flap {
+  0% {
+    transform: rotateX(0deg);
+  }
+  50% {
+    transform: rotateX(-90deg);
+  }
+  100% {
+    transform: rotateX(0deg);
+  }
+}
+
+.flap-animatie {
+  animation: flap 420ms ease-in-out;
+  transform-origin: center center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .flap-animatie {
+    animation: none;
+  }
+}
