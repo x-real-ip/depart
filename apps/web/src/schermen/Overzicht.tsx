@@ -7,6 +7,7 @@ import {
   api,
   type Destination,
   type Overzicht as OverzichtGegevens,
+  type Requirement,
   type RouteAntwoord,
   type TripMetReizigers,
   type WeerAntwoord,
@@ -31,6 +32,7 @@ export function Overzicht({
 }) {
   const [gegevens, setGegevens] = useState<OverzichtGegevens | null>(null);
   const [bestemmingen, setBestemmingen] = useState<Destination[] | null>(null);
+  const [vereisten, setVereisten] = useState<Requirement[] | null>(null);
   const [weer, setWeer] = useState<WeerAntwoord | null>(null);
   const [route, setRoute] = useState<RouteAntwoord | null>(null);
   const [fout, setFout] = useState<string | null>(null);
@@ -39,11 +41,17 @@ export function Overzicht({
     let actueel = true;
     setGegevens(null);
     setBestemmingen(null);
-    Promise.all([api.trips.overzicht(trip.id), api.destinations.lijst(trip.id)])
-      .then(([overzicht, destinations]) => {
+    setVereisten(null);
+    Promise.all([
+      api.trips.overzicht(trip.id),
+      api.destinations.lijst(trip.id),
+      api.vereisten.lijst(trip.id),
+    ])
+      .then(([overzicht, destinations, requirements]) => {
         if (!actueel) return;
         setGegevens(overzicht);
         setBestemmingen(destinations);
+        setVereisten(requirements);
       })
       .catch((error: Error) => {
         if (actueel) setFout(error.message);
@@ -71,7 +79,7 @@ export function Overzicht({
   }, [trip.id]);
 
   if (fout !== null) return <Melding tekst={fout} />;
-  if (gegevens === null || bestemmingen === null) return <Laden />;
+  if (gegevens === null || bestemmingen === null || vereisten === null) return <Laden />;
 
   const { documenten, inpaklijsten } = gegevens;
   const dagen = dagenTot(trip.vertrekdatum);
@@ -132,6 +140,7 @@ export function Overzicht({
       <VertrekstatusKaart
         documenten={documenten}
         inpaklijsten={inpaklijsten}
+        vereisten={vereisten}
         eindbestemming={eindbestemming}
         landen={landen}
         gaNaar={gaNaar}
@@ -214,16 +223,22 @@ const STATUS_STIJL = {
 function VertrekstatusKaart({
   documenten,
   inpaklijsten,
+  vereisten,
   eindbestemming,
   landen,
   gaNaar,
 }: {
   documenten: OverzichtGegevens["documenten"];
   inpaklijsten: OverzichtGegevens["inpaklijsten"];
+  vereisten: Requirement[];
   eindbestemming: Destination | null;
   landen: string[];
   gaNaar: (tab: Tab) => void;
 }) {
+  const vereistenAfgevinkt = vereisten.filter((item) => item.afgevinkt).length;
+  const vereistenPercentage =
+    vereisten.length === 0 ? 0 : Math.round((vereistenAfgevinkt / vereisten.length) * 100);
+
   const items: ChecklistItem[] = [
     {
       label: "Bestemming",
@@ -263,6 +278,17 @@ function VertrekstatusKaart({
       kritiek: false,
       percentage: inpaklijsten.lijsten === 0 ? undefined : inpaklijsten.percentage,
       onClick: () => gaNaar("inpaklijst"),
+    },
+    {
+      label: "Reisdocumenten",
+      waarde:
+        vereisten.length === 0
+          ? "geen checklist"
+          : `${vereistenAfgevinkt} van ${vereisten.length} klaar`,
+      klaar: vereisten.length === 0 || vereistenAfgevinkt === vereisten.length,
+      kritiek: false,
+      percentage: vereisten.length === 0 ? undefined : vereistenPercentage,
+      onClick: () => gaNaar("onderweg"),
     },
   ];
 

@@ -7,6 +7,7 @@ import { config } from "./config.js";
  * - Open-Meteo geocoding  — plaatsnaam naar coördinaten
  * - Open-Meteo forecast   — dag- en nachttemperatuur, wind, regenkans
  * - OSRM                  — afstand en rijtijd per etappe
+ * - Overpass (OpenStreetMap) — bezienswaardigheden rond de bestemming
  *
  * Regels die hier gelden:
  *
@@ -471,6 +472,254 @@ function hernoem(info: RouteInfo, punten: { naam: string }[]): RouteInfo {
       naar: punten[index + 1]?.naam ?? etappe.naar,
     })),
   };
+}
+
+// --- Bezienswaardigheden -----------------------------------------------------
+
+export interface Bezienswaardigheid {
+  naam: string;
+  categorie: string;
+  afstandKm: number;
+  openingstijden: string | null;
+  lat: number;
+  lon: number;
+}
+
+interface OverpassElement {
+  lat?: number;
+  lon?: number;
+  center?: { lat: number; lon: number };
+  tags?: Record<string, string>;
+}
+
+interface OverpassAntwoord {
+  elements?: OverpassElement[];
+}
+
+/** Elke categorie: het OSM-tag/waarde-paar en hoe de app het noemt. */
+const POI_CATEGORIEEN: { tag: string; waarde: string; categorie: string }[] = [
+  { tag: "tourism", waarde: "attraction", categorie: "Attractie" },
+  { tag: "tourism", waarde: "museum", categorie: "Museum" },
+  { tag: "tourism", waarde: "viewpoint", categorie: "Uitkijkpunt" },
+  { tag: "natural", waarde: "beach", categorie: "Strand" },
+  { tag: "leisure", waarde: "nature_reserve", categorie: "Natuurgebied" },
+  { tag: "amenity", waarde: "restaurant", categorie: "Restaurant" },
+];
+
+/** Straal om de bestemming waarbinnen gezocht wordt — "in de buurt", niet de hele regio. */
+const POI_STRAAL_METER = 5000;
+/**
+ * Hoogstens dit aantal per categorie. Overpass geeft resultaten terug op
+ * element-id, niet op volgorde van de query — één `out` aan het eind laat
+ * restaurants (verreweg de talrijkste) dus alle andere categorieën
+ * wegdrukken. Een eigen `out` per categorie voorkomt dat.
+ */
+const POI_PER_CATEGORIE = 6;
+/** In totaal hoogstens dit aantal, over alle categorieën heen. */
+const POI_TOTAAL_MAX = 30;
+
+/**
+ * Eén Overpass-query, met een los blok en een eigen `out` per categorie.
+ * Duurder dan één around-filter voor alles, maar bij vijf kilometer straal
+ * ruim binnen de marge — en het enige dat garandeert dat musea en
+ * uitkijkpunten niet verdrinken in restaurants.
+ */
+function overpassQuery(coordinaat: Coordinaat): string {
+  const rond = `around:${POI_STRAAL_METER},${coordinaat.lat},${coordinaat.lon}`;
+  const blokken = POI_CATEGORIEEN.map(
+    ({ tag, waarde }) =>
+      `(node["${tag}"="${waarde}"](${rond});way["${tag}"="${waarde}"](${rond}););out center tags ${POI_PER_CATEGORIE};`,
+  ).join("\n");
+  return `[out:json][timeout:${Math.round(config.extern.overpassTimeoutMs / 1000)}];\n${blokken}`;
+}
+
+/**
+ * Bezienswaardigheden rond een plek: attracties, musea, natuurgebieden,
+ * stranden, restaurants en uitkijkpunten, via OpenStreetMap (Overpass) — ook
+ * dit zonder sleutel. Een element zonder naam slaan we over: "Onbekend" is
+ * niets om aan te bevelen. Een beoordeling levert deze bron niet op, dus die
+ * verzinnen we niet bij — afstand en openingstijden (waar bekend) wel.
+ */
+export async function haalBezienswaardigheden(
+  coordinaat: Coordinaat,
+): Promise<Bezienswaardigheid[] | null> {
+  if (!config.extern.enabled) return null;
+
+  const sleutel = `poi:${coordinaat.lat.toFixed(3)},${coordinaat.lon.toFixed(3)}`;
+  const bewaard = uitCache<Bezienswaardigheid[]>(sleutel);
+  if (bewaard !== undefined) return bewaard;
+
+  const afbreken = AbortSignal.timeout(config.extern.overpassTimeoutMs);
+  let data: OverpassAntwoord;
+  try {
+    const response = await fetch(config.extern.overpassUrl, {
+      method: "POST",
+      signal: afbreken,
+      headers: {
+        "User-Agent": config.extern.userAgent,
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: `data=${encodeURIComponent(overpassQuery(coordinaat))}`,
+    });
+    if (!response.ok) {
+      externeFout("bezienswaardigheden", `status ${response.status}`);
+      return null;
+    }
+    data = (await response.json()) as OverpassAntwoord;
+  } catch (error) {
+    externeFout("bezienswaardigheden", foutReden(error));
+    return null;
+  }
+
+  const resultaten: Bezienswaardigheid[] = [];
+  for (const element of data.elements ?? []) {
+    const naam = element.tags?.["name"];
+    if (naam === undefined || naam.trim() === "") continue;
+    const lat = element.lat ?? element.center?.lat;
+    const lon = element.lon ?? element.center?.lon;
+    if (lat === undefined || lon === undefined) continue;
+
+    const categorie = POI_CATEGORIEEN.find(
+      ({ tag, waarde }) => element.tags?.[tag] === waarde,
+    )?.categorie;
+    if (categorie === undefined) continue;
+
+    resultaten.push({
+      naam,
+      categorie,
+      afstandKm: afstandTussen(coordinaat, { lat, lon }),
+      openingstijden: element.tags?.["opening_hours"] ?? null,
+      lat,
+      lon,
+    });
+  }
+
+  // Dichtstbijzijnde eerst; niet oneindig veel, anders wordt het een muur van
+  // stipjes in plaats van een lijstje om uit te kiezen.
+  resultaten.sort((a, b) => a.afstandKm - b.afstandKm);
+  const beperkt = resultaten.slice(0, POI_TOTAAL_MAX);
+
+  inCache(sleutel, beperkt);
+  return beperkt;
+}
+
+/** Hemelsbrede afstand in kilometers (Haversine), op één decimaal. */
+function afstandTussen(a: Coordinaat, b: Coordinaat): number {
+  const straalAarde = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return Math.round(2 * straalAarde * Math.asin(Math.sqrt(h)) * 10) / 10;
+}
+
+// --- Verkeersinformatie ------------------------------------------------------
+
+export interface VerkeersIncident {
+  categorie: string;
+  ernst: string;
+  omschrijving: string | null;
+  vertragingMin: number | null;
+  weg: string | null;
+}
+
+export interface Bbox {
+  minLat: number;
+  maxLat: number;
+  minLon: number;
+  maxLon: number;
+}
+
+interface TomTomIncidentAntwoord {
+  incidents?: {
+    properties?: {
+      iconCategory?: number;
+      magnitudeOfDelay?: number;
+      delay?: number;
+      events?: { description?: string }[];
+      roadNumbers?: string[];
+    };
+  }[];
+}
+
+/** TomTom's iconCategory-codes, vertaald. Onbekende codes tonen als "Overig". */
+const INCIDENT_CATEGORIE: Record<number, string> = {
+  1: "Ongeluk",
+  2: "Mist",
+  3: "Gevaarlijke situatie",
+  4: "Regen",
+  5: "IJzel",
+  6: "File",
+  7: "Rijstrook afgesloten",
+  8: "Weg afgesloten",
+  9: "Wegwerkzaamheden",
+  10: "Wind",
+  11: "Overstroming",
+  14: "Autopech",
+};
+
+/** TomTom's magnitudeOfDelay-codes: 0 tot 4, oplopend van geen tot zeer ernstig. */
+const INCIDENT_ERNST: Record<number, string> = {
+  0: "onbekend",
+  1: "gering",
+  2: "matig",
+  3: "ernstig",
+  4: "zeer ernstig",
+};
+
+/** Niet oneindig veel incidenten — de ergste vertragingen eerst. */
+const VERKEER_MAX = 20;
+
+/**
+ * Actuele incidenten (files, ongelukken, wegwerkzaamheden) binnen een
+ * bounding box, via TomTom. Anders dan weer, route en bezienswaardigheden
+ * werkt dit niet zonder sleutel — is die niet gezet, dan geeft de functie
+ * null terug, precies als bij een onbereikbare dienst.
+ */
+export async function haalVerkeer(bbox: Bbox): Promise<VerkeersIncident[] | null> {
+  if (!config.extern.enabled) return null;
+  if (config.traffic.tomtomApiKey === "") return null;
+
+  const sleutel = `verkeer:${bbox.minLat.toFixed(2)},${bbox.minLon.toFixed(2)},${bbox.maxLat.toFixed(2)},${bbox.maxLon.toFixed(2)}`;
+  const bewaard = uitCache<VerkeersIncident[]>(sleutel);
+  if (bewaard !== undefined) return bewaard;
+
+  const url = new URL(config.traffic.tomtomUrl);
+  url.searchParams.set("key", config.traffic.tomtomApiKey);
+  url.searchParams.set("bbox", `${bbox.minLon},${bbox.minLat},${bbox.maxLon},${bbox.maxLat}`);
+  url.searchParams.set(
+    "fields",
+    "{incidents{properties{iconCategory,magnitudeOfDelay,delay,events{description},roadNumbers}}}",
+  );
+  url.searchParams.set("language", "nl-NL");
+  url.searchParams.set("timeValidityFilter", "present");
+
+  const antwoord = await haalJson<TomTomIncidentAntwoord>(url.toString(), "verkeer");
+  if (!antwoord.ok) return null;
+
+  const incidenten = (antwoord.data.incidents ?? [])
+    .map((element): VerkeersIncident | null => {
+      const eigenschappen = element.properties;
+      if (eigenschappen === undefined) return null;
+      return {
+        categorie: INCIDENT_CATEGORIE[eigenschappen.iconCategory ?? -1] ?? "Overig",
+        ernst: INCIDENT_ERNST[eigenschappen.magnitudeOfDelay ?? 0] ?? "onbekend",
+        omschrijving: eigenschappen.events?.[0]?.description ?? null,
+        vertragingMin:
+          eigenschappen.delay !== undefined ? Math.round(eigenschappen.delay / 60) : null,
+        weg: eigenschappen.roadNumbers?.[0] ?? null,
+      };
+    })
+    .filter((incident): incident is VerkeersIncident => incident !== null);
+
+  // De grootste vertraging eerst — dat is het meest relevant voor de reis.
+  incidenten.sort((a, b) => (b.vertragingMin ?? 0) - (a.vertragingMin ?? 0));
+  const beperkt = incidenten.slice(0, VERKEER_MAX);
+
+  inCache(sleutel, beperkt);
+  return beperkt;
 }
 
 // --- Datumhulp -------------------------------------------------------------

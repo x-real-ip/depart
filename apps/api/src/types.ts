@@ -91,6 +91,15 @@ export interface ContactRow {
   telefoonnummer: string;
 }
 
+/** Eén regel op de checklist reisdocumenten: paspoort, rijbewijs, en zo. */
+export interface RequirementRow {
+  id: string;
+  trip_id: string;
+  label: string;
+  afgevinkt: boolean;
+  volgorde: number;
+}
+
 export const tripColumns = `
   id, naam, vertrekdatum, terugdatum, afstand_km, rijtijd_min, tol_kosten,
   thuisplaats, thuisland, thuisadres, thuis_lat, thuis_lon,
@@ -178,6 +187,31 @@ export function toContact(row: ContactRow) {
     telefoonnummer: row.telefoonnummer,
   };
 }
+
+export function toRequirement(row: RequirementRow) {
+  return {
+    id: row.id,
+    tripId: row.trip_id,
+    label: row.label,
+    afgevinkt: row.afgevinkt,
+    volgorde: row.volgorde,
+  };
+}
+
+/**
+ * Startset voor de checklist reisdocumenten. Niet landspecifiek: dit zijn de
+ * dingen die voor vrijwel elke autoreis over de grens relevant zijn. Wat niet
+ * van toepassing is (bijvoorbeeld een visum binnen Schengen) vink je af of
+ * verwijder je gewoon.
+ */
+export const STANDAARD_VEREISTEN = [
+  "Paspoort",
+  "Rijbewijs",
+  "Internationaal rijbewijs",
+  "Reisverzekering",
+  "Visum",
+  "Vaccinaties",
+] as const;
 
 /**
  * Het document zoals de app het ziet. De status is berekend, niet opgeslagen:

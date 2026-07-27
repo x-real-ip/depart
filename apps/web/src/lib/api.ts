@@ -230,6 +230,35 @@ export interface RouteInfo {
   geometrie: [number, number][];
 }
 
+/** Eén bezienswaardigheid in de buurt van de eindbestemming. */
+export interface Bezienswaardigheid {
+  naam: string;
+  categorie: string;
+  afstandKm: number;
+  openingstijden: string | null;
+  lat: number;
+  lon: number;
+}
+
+export interface BezienswaardighedenAntwoord {
+  bezienswaardigheden: Bezienswaardigheid[];
+  reden: string;
+}
+
+/** Eén actueel verkeersincident: file, ongeluk, wegwerkzaamheden, en zo. */
+export interface VerkeersIncident {
+  categorie: string;
+  ernst: string;
+  omschrijving: string | null;
+  vertragingMin: number | null;
+  weg: string | null;
+}
+
+export interface VerkeerAntwoord {
+  incidenten: VerkeersIncident[];
+  reden: string;
+}
+
 export type PuntRol = "thuis" | "onderweg" | "bestemming";
 
 /** Eén punt op de kaart: thuis, een tussenliggende bestemming, of de eindbestemming. */
@@ -258,6 +287,7 @@ export const REDEN_TEKST: Record<string, string> = {
   "dienst-onbereikbaar":
     "De dienst is nu niet bereikbaar — dit ligt niet aan je invoer. Probeer het later opnieuw.",
   "te-weinig-punten": "Er zijn te weinig punten voor een route.",
+  "geen-sleutel": "Verkeersinformatie is niet ingesteld voor deze app.",
 };
 
 /** Korte variant voor naast een plaatsnaam. */
@@ -267,6 +297,7 @@ export const REDEN_KORT: Record<string, string> = {
   "geen-bestemming": "geen bestemming",
   "plaats-niet-gevonden": "plaatsnaam niet gevonden",
   "dienst-onbereikbaar": "dienst niet bereikbaar",
+  "geen-sleutel": "niet ingesteld",
 };
 
 export interface Contact {
@@ -274,6 +305,15 @@ export interface Contact {
   tripId: string;
   label: string;
   telefoonnummer: string;
+}
+
+/** Eén regel op de checklist reisdocumenten: paspoort, rijbewijs, en zo. */
+export interface Requirement {
+  id: string;
+  tripId: string;
+  label: string;
+  afgevinkt: boolean;
+  volgorde: number;
 }
 
 export interface Voortgang {
@@ -435,6 +475,12 @@ export const api = {
         afstandKm?: number | null;
         rijtijdMin?: number | null;
       }>,
+    bezienswaardigheden: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/bezienswaardigheden`) as Promise<
+        BezienswaardighedenAntwoord
+      >,
+    verkeer: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/verkeer`) as Promise<VerkeerAntwoord>,
   },
 
   /** Adres-autocomplete voor thuisadres, bestemming en overnachtingen. */
@@ -452,5 +498,16 @@ export const api = {
     werkBij: (id: string, velden: { label?: string; telefoonnummer?: string }) =>
       verzoek("PATCH", `/api/contacts/${id}`, velden) as Promise<Contact>,
     verwijder: (id: string) => verzoek("DELETE", `/api/contacts/${id}`) as Promise<null>,
+  },
+
+  /** De checklist reisdocumenten: paspoort, rijbewijs, reisverzekering, en zo. */
+  vereisten: {
+    lijst: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/requirements`) as Promise<Requirement[]>,
+    voegToe: (tripId: string, label: string) =>
+      verzoek("POST", `/api/trips/${tripId}/requirements`, { label }) as Promise<Requirement>,
+    werkBij: (id: string, velden: { label?: string; afgevinkt?: boolean }) =>
+      verzoek("PATCH", `/api/requirements/${id}`, velden) as Promise<Requirement>,
+    verwijder: (id: string) => verzoek("DELETE", `/api/requirements/${id}`) as Promise<null>,
   },
 };

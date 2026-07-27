@@ -9,6 +9,7 @@ import { documentRoutes } from "./routes/documents.js";
 import { packItemRoutes } from "./routes/packItems.js";
 import { packListRoutes } from "./routes/packLists.js";
 import { reisinfoRoutes } from "./routes/reisinfo.js";
+import { requirementRoutes } from "./routes/requirements.js";
 import { tripRoutes } from "./routes/trips.js";
 import { initDocumentsPath } from "./storage.js";
 import { NotFoundError, ValidationError } from "./validate.js";
@@ -120,6 +121,7 @@ await app.register(
     await api.register(packItemRoutes);
     await api.register(destinationRoutes);
     await api.register(contactRoutes);
+    await api.register(requirementRoutes);
     await api.register(documentRoutes);
     await api.register(reisinfoRoutes);
     await api.register(adresRoutes);

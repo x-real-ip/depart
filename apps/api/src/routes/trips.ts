@@ -3,6 +3,7 @@ import { query, queryOne, transaction } from "../db.js";
 import { leesDestinationVelden } from "./destinations.js";
 import { verwijderBestand, verwijderReisMap } from "../storage.js";
 import {
+  STANDAARD_VEREISTEN,
   documentStatus,
   toDocument,
   toTraveler,
@@ -123,6 +124,16 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
           [row.id, reiziger.naam, reiziger.geboortejaar],
         );
       }
+
+      // Een startset voor de checklist reisdocumenten, zodat die niet leeg
+      // begint — wat niet van toepassing is, vink je af of verwijder je.
+      for (const [index, label] of STANDAARD_VEREISTEN.entries()) {
+        await client.query(
+          `INSERT INTO requirement (trip_id, label, volgorde) VALUES ($1, $2, $3)`,
+          [row.id, label, index],
+        );
+      }
+
       return row;
     });
 

@@ -43,11 +43,34 @@ export const config = {
      * deze ook straten, huisnummers en plekken zoals een camping.
      */
     addressAutocompleteUrl: process.env.ADDRESS_AUTOCOMPLETE_URL ?? "https://photon.komoot.io/api/",
+    /**
+     * Voor bezienswaardigheden in de buurt van de bestemming: Overpass, op
+     * OpenStreetMap-gegevens — ook zonder sleutel.
+     */
+    overpassUrl: process.env.OVERPASS_URL ?? "https://overpass-api.de/api/interpreter",
+    /**
+     * Zes categorieën in één query duurt in een drukke stad al gauw acht
+     * seconden — de gewone timeout hierboven is daarvoor te krap.
+     */
+    overpassTimeoutMs: Number(process.env.OVERPASS_TIMEOUT_MS ?? 20_000),
     /** Hoe lang een antwoord in het geheugen blijft staan. */
     cacheMinuten: Number(process.env.EXTERN_CACHE_MINUTES ?? 30),
     timeoutMs: Number(process.env.EXTERN_TIMEOUT_MS ?? 8000),
     /** Nette identificatie richting de publieke diensten. */
     userAgent: process.env.EXTERN_USER_AGENT ?? "depart/1.0 (self-hosted)",
+  },
+
+  /**
+   * Actuele verkeersinformatie (files, ongelukken, wegwerkzaamheden) is,
+   * anders dan weer, route en bezienswaardigheden, niet als publieke dienst
+   * zonder sleutel te krijgen — dat blijven, voor de hele reis en niet
+   * alleen Nederland, alleen commerciële partijen. Zonder sleutel toont de
+   * app netjes "niet beschikbaar" in plaats van dat de functie ontbreekt.
+   */
+  traffic: {
+    tomtomApiKey: process.env.TOMTOM_API_KEY ?? "",
+    tomtomUrl:
+      process.env.TOMTOM_URL ?? "https://api.tomtom.com/traffic/services/5/incidentDetails",
   },
 } as const;
 

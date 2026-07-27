@@ -2,12 +2,16 @@ import type { FastifyPluginAsync } from "fastify";
 import { config } from "../config.js";
 import { query } from "../db.js";
 import {
+  haalBezienswaardigheden,
   haalRoute,
+  haalVerkeer,
   haalWeer,
   zoekCoordinaat,
+  type Bezienswaardigheid,
   type Coordinaat,
   type CoordinaatUitkomst,
   type RouteInfo,
+  type VerkeersIncident,
   type WeerReeks,
 } from "../extern.js";
 import type { DestinationRow, TripRow } from "../types.js";
@@ -31,7 +35,8 @@ type Reden =
   | "geen-bestemming"
   | "plaats-niet-gevonden"
   | "dienst-onbereikbaar"
-  | "te-weinig-punten";
+  | "te-weinig-punten"
+  | "geen-sleutel";
 
 /** Eén punt op de kaart: waar het voor staat, plus de coördinaat. */
 interface RoutePunt {
@@ -207,6 +212,73 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
           : perPlaatsReden(thuisUitkomst, thuis),
       reden: bestemming !== null || thuis !== null ? "ok" : bestemmingReden,
     };
+  });
+
+  /**
+   * Bezienswaardigheden rond de eindbestemming: attracties, musea,
+   * natuurgebieden, stranden, restaurants en uitkijkpunten. Net als bij het
+   * weer gaat het om de eindbestemming, niet om elke tussenstop.
+   */
+  app.get("/trips/:id/bezienswaardigheden", async (request) => {
+    const id = pathUuid((request.params as { id?: string }).id);
+    const trip = await haalTrip(id);
+
+    const leeg = (waarom: Reden) => ({
+      bezienswaardigheden: [] as Bezienswaardigheid[],
+      reden: waarom,
+    });
+
+    if (!config.extern.enabled) return leeg("uitgeschakeld");
+
+    const bestemmingen = await haalBestemmingen(trip.id);
+    const eindbestemming = bestemmingen.at(-1) ?? null;
+    if (eindbestemming === null) return leeg("geen-bestemming");
+
+    const coordinaat = await coordinaatVanBestemming(eindbestemming);
+    if (coordinaat === null) return leeg("plaats-niet-gevonden");
+
+    const resultaten = await haalBezienswaardigheden(coordinaat);
+    if (resultaten === null) return leeg("dienst-onbereikbaar");
+
+    return { bezienswaardigheden: resultaten, reden: "ok" satisfies Reden };
+  });
+
+  /**
+   * Actuele verkeersinformatie (files, ongelukken, wegwerkzaamheden) binnen
+   * de bounding box van de berekende route. Anders dan weer, route en
+   * bezienswaardigheden werkt dit niet zonder sleutel (zie config.ts) — is
+   * die niet gezet, dan komt "geen-sleutel" terug in plaats van een fout.
+   */
+  app.get("/trips/:id/verkeer", async (request) => {
+    const id = pathUuid((request.params as { id?: string }).id);
+    const trip = await haalTrip(id);
+
+    const leeg = (waarom: Reden) => ({ incidenten: [] as VerkeersIncident[], reden: waarom });
+
+    if (!config.extern.enabled) return leeg("uitgeschakeld");
+    if (config.traffic.tomtomApiKey === "") return leeg("geen-sleutel");
+
+    const opbouw = await routePunten(trip);
+    if ("fout" in opbouw) return leeg(opbouw.fout);
+
+    const route = await haalRoute(opbouw.punten);
+    if (route === null || route.geometrie.length === 0) return leeg("dienst-onbereikbaar");
+
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLon = Infinity;
+    let maxLon = -Infinity;
+    for (const [lat, lon] of route.geometrie) {
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+    }
+
+    const incidenten = await haalVerkeer({ minLat, maxLat, minLon, maxLon });
+    if (incidenten === null) return leeg("dienst-onbereikbaar");
+
+    return { incidenten, reden: "ok" satisfies Reden };
   });
 
   /**

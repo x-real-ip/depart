@@ -10,34 +10,45 @@ import {
   LegeStaat,
   Melding,
   Veld,
+  VoortgangsBalk,
 } from "../components/ui.tsx";
 import {
   REDEN_TEKST,
   api,
+  type BezienswaardighedenAntwoord,
   type Contact,
   type Destination,
+  type Requirement,
   type RouteAntwoord,
   type Trip,
+  type VerkeerAntwoord,
 } from "../lib/api.ts";
 import { afstand, bedrag, officieleNoodnummers, rijtijd, verplichtInDeAuto } from "../lib/format.ts";
 
 export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzigd: () => void }) {
   const [bestemmingen, setBestemmingen] = useState<Destination[] | null>(null);
   const [nummers, setNummers] = useState<Contact[] | null>(null);
+  const [vereisten, setVereisten] = useState<Requirement[] | null>(null);
   const [route, setRoute] = useState<RouteAntwoord | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const [bezig, setBezig] = useState(false);
 
   const [nieuwLabel, setNieuwLabel] = useState("");
   const [nieuwNummer, setNieuwNummer] = useState("");
+  const [nieuweVereiste, setNieuweVereiste] = useState("");
 
   useEffect(() => {
     let actueel = true;
-    Promise.all([api.destinations.lijst(trip.id), api.noodnummers.lijst(trip.id)])
-      .then(([destinations, contacts]) => {
+    Promise.all([
+      api.destinations.lijst(trip.id),
+      api.noodnummers.lijst(trip.id),
+      api.vereisten.lijst(trip.id),
+    ])
+      .then(([destinations, contacts, requirements]) => {
         if (!actueel) return;
         setBestemmingen(destinations);
         setNummers(contacts);
+        setVereisten(requirements);
       })
       .catch((error: Error) => {
         if (actueel) setFout(error.message);
@@ -47,6 +58,27 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
     };
   }, [trip.id]);
 
+  async function wisselVereiste(item: Requirement): Promise<void> {
+    // Direct in beeld bijwerken; de api volgt. Bij een fout zetten we terug.
+    const vorige = vereisten ?? [];
+    setVereisten(vorige.map((r) => (r.id === item.id ? { ...r, afgevinkt: !r.afgevinkt } : r)));
+    try {
+      await api.vereisten.werkBij(item.id, { afgevinkt: !item.afgevinkt });
+    } catch (error) {
+      setVereisten(vorige);
+      setFout((error as Error).message);
+    }
+  }
+
+  async function voegVereisteToe(): Promise<void> {
+    if (nieuweVereiste.trim() === "") return;
+    await metFout(async () => {
+      const nieuw = await api.vereisten.voegToe(trip.id, nieuweVereiste.trim());
+      setVereisten([...(vereisten ?? []), nieuw]);
+      setNieuweVereiste("");
+    });
+  }
+
   async function herlaadRoute(): Promise<void> {
     setRoute(await api.reisinfo.route(trip.id));
   }
@@ -54,6 +86,35 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
   useEffect(() => {
     void herlaadRoute();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip.id]);
+
+  const [bezienswaardigheden, setBezienswaardigheden] =
+    useState<BezienswaardighedenAntwoord | null>(null);
+
+  // Apart van de rest: dit kan een paar seconden duren (Overpass doorzoekt
+  // een heel gebied) en de rest van het scherm hoeft daar niet op te wachten.
+  useEffect(() => {
+    let actueel = true;
+    setBezienswaardigheden(null);
+    void api.reisinfo.bezienswaardigheden(trip.id).then((antwoord) => {
+      if (actueel) setBezienswaardigheden(antwoord);
+    });
+    return () => {
+      actueel = false;
+    };
+  }, [trip.id]);
+
+  const [verkeer, setVerkeer] = useState<VerkeerAntwoord | null>(null);
+
+  useEffect(() => {
+    let actueel = true;
+    setVerkeer(null);
+    void api.reisinfo.verkeer(trip.id).then((antwoord) => {
+      if (actueel) setVerkeer(antwoord);
+    });
+    return () => {
+      actueel = false;
+    };
   }, [trip.id]);
 
   /**
@@ -83,7 +144,12 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
   }
 
   if (fout !== null && bestemmingen === null) return <Melding tekst={fout} />;
-  if (bestemmingen === null || nummers === null) return <Laden />;
+  if (bestemmingen === null || nummers === null || vereisten === null) return <Laden />;
+
+  const vereistenPercentage =
+    vereisten.length === 0
+      ? 0
+      : Math.round((vereisten.filter((item) => item.afgevinkt).length / vereisten.length) * 100);
 
   // Landen waar je doorheen rijdt of verblijft, op volgorde van de eerste
   // bestemming waar dat land bij hoort — een reis kan door meerdere landen gaan.
@@ -178,6 +244,88 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
         <Bestemmingen tripId={trip.id} onGewijzigd={() => void herlaadNaWijziging()} />
 
         <div className="space-y-4">
+          {/* Reisdocumenten: een afvinkbare checklist, met een startset zodra
+              de reis is aangemaakt — wat niet van toepassing is vink je af
+              of verwijder je gewoon. */}
+          <Kaart>
+            <KaartKop>Reisdocumenten</KaartKop>
+            {vereisten.length > 0 && (
+              <div className="mb-3">
+                <VoortgangsBalk percentage={vereistenPercentage} />
+                <p className="mt-1.5 text-xs text-slate">
+                  {vereisten.filter((item) => item.afgevinkt).length} van {vereisten.length} klaar
+                </p>
+              </div>
+            )}
+            {vereisten.length > 0 && (
+              <ul className="-mx-1 mb-3 divide-y divide-slate/12">
+                {vereisten.map((item) => (
+                  <li key={item.id} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void wisselVereiste(item)}
+                      aria-pressed={item.afgevinkt}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2.5 text-left transition-colors hover:bg-canvas"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`flex size-5 shrink-0 items-center justify-center rounded-md border-2 text-xs font-bold ${
+                          item.afgevinkt
+                            ? "border-forest bg-forest text-white"
+                            : "border-slate/35 text-transparent"
+                        }`}
+                      >
+                        ✓
+                      </span>
+                      <span
+                        className={`truncate text-sm ${
+                          item.afgevinkt ? "text-slate line-through" : "text-ink"
+                        }`}
+                      >
+                        {item.label}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void metFout(async () => {
+                          await api.vereisten.verwijder(item.id);
+                          setVereisten((vereisten ?? []).filter((r) => r.id !== item.id));
+                        })
+                      }
+                      aria-label={`${item.label} verwijderen`}
+                      className="shrink-0 rounded-lg px-2 py-2 text-xs text-slate hover:bg-alert/8 hover:text-alert"
+                    >
+                      Weg
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2 border-t border-slate/12 pt-3">
+              <input
+                className={INVOER_STIJL}
+                placeholder="Bijvoorbeeld: groene kaart"
+                value={nieuweVereiste}
+                aria-label="Nieuw item op de checklist"
+                onChange={(event) => setNieuweVereiste(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && nieuweVereiste.trim() !== "") {
+                    event.preventDefault();
+                    void voegVereisteToe();
+                  }
+                }}
+              />
+              <Knop
+                soort="primair"
+                disabled={bezig || nieuweVereiste.trim() === ""}
+                onClick={voegVereisteToe}
+              >
+                Voeg toe
+              </Knop>
+            </div>
+          </Kaart>
+
           {/* Verplicht in de auto, per land dat de reis doorkruist. */}
           {landen.length > 0 && (
             <Kaart className="space-y-3">
@@ -325,7 +473,155 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
           </Kaart>
         </div>
       </div>
+
+      {/* Actuele verkeersinformatie langs de route. */}
+      <VerkeerKaart gegevens={verkeer} />
+
+      {/* Bezienswaardigheden rond de eindbestemming: los onder de rest, dit
+          mag zijn eigen tijd nemen. */}
+      <BezienswaardighedenKaart gegevens={bezienswaardigheden} />
     </div>
+  );
+}
+
+const INCIDENT_KLEUR: Record<string, string> = {
+  onbekend: "bg-slate/12 text-slate",
+  gering: "bg-slate/12 text-slate",
+  matig: "bg-amber/20 text-navy",
+  ernstig: "bg-alert/10 text-alert",
+  "zeer ernstig": "bg-alert/10 text-alert",
+};
+
+/** Files, ongelukken en wegwerkzaamheden binnen de bounding box van de route. */
+function VerkeerKaart({ gegevens }: { gegevens: VerkeerAntwoord | null }) {
+  if (gegevens === null) {
+    return (
+      <Kaart>
+        <KaartKop>Verkeersinformatie</KaartKop>
+        <p className="label-mono py-4 text-center text-slate" role="status">
+          Verkeersinformatie ophalen
+        </p>
+      </Kaart>
+    );
+  }
+
+  if (gegevens.reden !== "ok" || gegevens.incidenten.length === 0) {
+    return (
+      <Kaart>
+        <KaartKop>Verkeersinformatie</KaartKop>
+        <p className="text-sm text-slate">
+          {gegevens.reden === "ok"
+            ? "Geen files of incidenten gemeld langs de route."
+            : (REDEN_TEKST[gegevens.reden] ?? "Geen verkeersinformatie beschikbaar.")}
+        </p>
+      </Kaart>
+    );
+  }
+
+  return (
+    <Kaart className="p-0">
+      <div className="px-4 pt-4 pb-1">
+        <KaartKop extra={<span className="text-xs text-slate">actueel</span>}>
+          Verkeersinformatie
+        </KaartKop>
+      </div>
+      <ul className="divide-y divide-slate/12">
+        {gegevens.incidenten.map((incident, index) => (
+          <li key={index} className="flex items-start gap-3 px-4 py-2.5">
+            <span
+              className={`label-mono mt-0.5 shrink-0 rounded-full px-2 py-0.5 ${
+                INCIDENT_KLEUR[incident.ernst] ?? "bg-slate/12 text-slate"
+              }`}
+            >
+              {incident.categorie}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-ink">
+                {incident.omschrijving ?? incident.categorie}
+              </span>
+              {incident.weg !== null && (
+                <span className="block truncate text-xs text-slate">{incident.weg}</span>
+              )}
+            </span>
+            {incident.vertragingMin !== null && incident.vertragingMin > 0 && (
+              <span className="shrink-0 font-mono text-xs text-slate">
+                +{incident.vertragingMin} min
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Kaart>
+  );
+}
+
+const POI_KLEUR: Record<string, string> = {
+  Attractie: "bg-amber/20 text-navy",
+  Strand: "bg-amber/20 text-navy",
+  Museum: "bg-navy/10 text-navy",
+  Uitkijkpunt: "bg-forest/12 text-forest",
+  Natuurgebied: "bg-forest/12 text-forest",
+  Restaurant: "bg-slate/12 text-slate",
+};
+
+/** Attracties, musea, natuur, stranden, restaurants en uitkijkpunten rond de eindbestemming. */
+function BezienswaardighedenKaart({ gegevens }: { gegevens: BezienswaardighedenAntwoord | null }) {
+  if (gegevens === null) {
+    return (
+      <Kaart>
+        <KaartKop>Bezienswaardigheden in de buurt</KaartKop>
+        <p className="label-mono py-4 text-center text-slate" role="status">
+          Bezienswaardigheden zoeken
+        </p>
+      </Kaart>
+    );
+  }
+
+  if (gegevens.reden !== "ok" || gegevens.bezienswaardigheden.length === 0) {
+    return (
+      <Kaart>
+        <KaartKop>Bezienswaardigheden in de buurt</KaartKop>
+        <p className="text-sm text-slate">
+          {gegevens.reden === "ok"
+            ? "Niets gevonden binnen 5 km van je bestemming."
+            : (REDEN_TEKST[gegevens.reden] ?? "Geen bezienswaardigheden beschikbaar.")}
+        </p>
+      </Kaart>
+    );
+  }
+
+  return (
+    <Kaart className="p-0">
+      <div className="px-4 pt-4 pb-1">
+        <KaartKop extra={<span className="text-xs text-slate">binnen 5 km</span>}>
+          Bezienswaardigheden in de buurt
+        </KaartKop>
+      </div>
+      <ul className="divide-y divide-slate/12">
+        {gegevens.bezienswaardigheden.map((plek, index) => (
+          <li key={`${plek.naam}-${index}`} className="flex items-start gap-3 px-4 py-2.5">
+            <span
+              className={`label-mono mt-0.5 shrink-0 rounded-full px-2 py-0.5 ${
+                POI_KLEUR[plek.categorie] ?? "bg-slate/12 text-slate"
+              }`}
+            >
+              {plek.categorie}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-ink">{plek.naam}</span>
+              {plek.openingstijden !== null && (
+                <span className="block truncate text-xs text-slate">{plek.openingstijden}</span>
+              )}
+            </span>
+            <span className="shrink-0 font-mono text-xs text-slate">
+              {plek.afstandKm < 1
+                ? `${Math.round(plek.afstandKm * 1000)} m`
+                : `${plek.afstandKm.toLocaleString("nl-NL")} km`}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Kaart>
   );
 }
 
