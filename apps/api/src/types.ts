@@ -8,14 +8,8 @@ export type DocumentStatus = "ontbreekt" | "let op" | "geldig";
 export interface TripRow {
   id: string;
   naam: string;
-  bestemming: string;
-  land: string;
-  regio: string | null;
   vertrekdatum: string;
   terugdatum: string;
-  camping_naam: string | null;
-  plaatsnummer: string | null;
-  plaats_info: string | null;
   afstand_km: number | null;
   rijtijd_min: number | null;
   tol_kosten: number | null;
@@ -24,9 +18,6 @@ export interface TripRow {
   thuisadres: string | null;
   thuis_lat: number | null;
   thuis_lon: number | null;
-  bestemming_adres: string | null;
-  bestemming_lat: number | null;
-  bestemming_lon: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -67,16 +58,28 @@ export interface PackItemRow {
   afgevinkt: boolean;
 }
 
-export interface StopRow {
+/**
+ * Een plek waar je bent tijdens de reis — van een korte tussenstop tot de
+ * eindbestemming. Verschil zit alleen in wat er ingevuld is: een tussenstop
+ * heeft misschien alleen een plaats en een inchecktijd, een meerdaags verblijf
+ * heeft er ook een adres en incheck-/uitcheckdatum bij. Geordend op `volgorde`;
+ * de laatste in die volgorde is de eindbestemming van de reis.
+ */
+export interface DestinationRow {
   id: string;
   trip_id: string;
+  naam: string | null;
   plaats: string;
-  tijd: string | null;
-  opmerking: string | null;
-  volgorde: number;
-  overnachting: boolean;
+  land: string | null;
+  regio: string | null;
   adres: string | null;
-  nachten: number | null;
+  plaatsnummer: string | null;
+  opmerking: string | null;
+  incheckdatum: string | null;
+  inchecktijd: string | null;
+  uitcheckdatum: string | null;
+  uitchecktijd: string | null;
+  volgorde: number;
   lat: number | null;
   lon: number | null;
 }
@@ -89,10 +92,8 @@ export interface ContactRow {
 }
 
 export const tripColumns = `
-  id, naam, bestemming, land, regio, vertrekdatum, terugdatum,
-  camping_naam, plaatsnummer, plaats_info, afstand_km, rijtijd_min, tol_kosten,
+  id, naam, vertrekdatum, terugdatum, afstand_km, rijtijd_min, tol_kosten,
   thuisplaats, thuisland, thuisadres, thuis_lat, thuis_lon,
-  bestemming_adres, bestemming_lat, bestemming_lon,
   created_at, updated_at
 `;
 
@@ -100,29 +101,19 @@ export function toTrip(row: TripRow) {
   return {
     id: row.id,
     naam: row.naam,
-    bestemming: row.bestemming,
-    land: row.land,
-    regio: row.regio,
     vertrekdatum: row.vertrekdatum,
     terugdatum: row.terugdatum,
-    campingNaam: row.camping_naam,
-    plaatsnummer: row.plaatsnummer,
-    plaatsInfo: row.plaats_info,
     afstandKm: row.afstand_km,
     rijtijdMin: row.rijtijd_min,
     tolKosten: row.tol_kosten,
     thuisplaats: row.thuisplaats,
     thuisland: row.thuisland,
     thuisAdres: row.thuisadres,
-    bestemmingAdres: row.bestemming_adres,
     // Geverifieerd betekent: er zijn coördinaten bij dit adres, via een
     // gekozen suggestie of eerder al opgezocht. Puur informatief voor de
     // instellingen — bij het bewerken houdt de app zelf de verificatiestatus
     // bij totdat er weer wordt opgeslagen.
     thuisAdresGeverifieerd: row.thuis_lat !== null,
-    bestemmingAdresGeverifieerd: row.bestemming_lat !== null,
-    /** Aantal nachten op de camping, uit de datums berekend. */
-    nachten: nachtenTussen(row.vertrekdatum, row.terugdatum),
   };
 }
 
@@ -154,18 +145,28 @@ export function toPackItem(row: PackItemRow) {
   };
 }
 
-export function toStop(row: StopRow) {
+export function toDestination(row: DestinationRow) {
   return {
     id: row.id,
     tripId: row.trip_id,
+    naam: row.naam,
     plaats: row.plaats,
-    tijd: row.tijd,
-    opmerking: row.opmerking,
-    volgorde: row.volgorde,
-    overnachting: row.overnachting,
+    land: row.land,
+    regio: row.regio,
     adres: row.adres,
-    nachten: row.nachten,
+    plaatsnummer: row.plaatsnummer,
+    opmerking: row.opmerking,
+    incheckdatum: row.incheckdatum,
+    inchecktijd: row.inchecktijd,
+    uitcheckdatum: row.uitcheckdatum,
+    uitchecktijd: row.uitchecktijd,
+    volgorde: row.volgorde,
     adresGeverifieerd: row.lat !== null,
+    /** Alleen als beide datums ingevuld zijn; anders is er niets te tellen. */
+    nachten:
+      row.incheckdatum !== null && row.uitcheckdatum !== null
+        ? nachtenTussen(row.incheckdatum, row.uitcheckdatum)
+        : null,
   };
 }
 
@@ -216,8 +217,6 @@ export function documentStatus(row: DocumentRow, terugdatum: string): DocumentSt
 }
 
 /** Aantal nachten tussen twee kalenderdagen. */
-export function nachtenTussen(vertrekdatum: string, terugdatum: string): number {
-  const van = Date.parse(`${vertrekdatum}T00:00:00Z`);
-  const tot = Date.parse(`${terugdatum}T00:00:00Z`);
-  return Math.max(0, Math.round((tot - van) / 86_400_000));
+export function nachtenTussen(van: string, tot: string): number {
+  return Math.max(0, Math.round((Date.parse(`${tot}T00:00:00Z`) - Date.parse(`${van}T00:00:00Z`)) / 86_400_000));
 }

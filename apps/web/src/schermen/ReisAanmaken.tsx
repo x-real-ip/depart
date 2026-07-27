@@ -13,6 +13,11 @@ interface NieuweReiziger {
  * Het startscherm bij een lege app, en ook het scherm om een tweede reis toe te
  * voegen. Geen <form> met submit-navigatie: een onClick-handler slaat op.
  *
+ * Eerst alles wat bij vertrek hoort, dan de bestemming — in die volgorde vul
+ * je een reis ook echt in. Deze eerste bestemming is een gewone bestemming
+ * zoals alle andere; na het aanmaken kun je er meer toevoegen bij de
+ * instellingen of onderweg.
+ *
  * Wat verplicht is staat op twee plekken: als markering achter het label, en
  * bovenaan als lijstje van wat nog ontbreekt. Zo hoef je niet te zoeken.
  */
@@ -24,21 +29,24 @@ export function ReisAanmaken({
   onAnnuleer?: () => void;
 }) {
   const [naam, setNaam] = useState("");
-  const [bestemming, setBestemming] = useState("");
-  const [land, setLand] = useState("Frankrijk");
-  const [regio, setRegio] = useState("");
+  const [vertrekdatum, setVertrekdatum] = useState("");
+  const [terugdatum, setTerugdatum] = useState("");
+
   const [thuisplaats, setThuisplaats] = useState("");
   const [thuisland, setThuisland] = useState("Nederland");
   const [thuisAdres, setThuisAdres] = useState("");
   const [thuisCoord, setThuisCoord] = useState<{ lat: number; lon: number } | null>(null);
-  const [vertrekdatum, setVertrekdatum] = useState("");
-  const [terugdatum, setTerugdatum] = useState("");
+
+  const [bestemming, setBestemming] = useState("");
+  const [land, setLand] = useState("Frankrijk");
+  const [regio, setRegio] = useState("");
   const [campingNaam, setCampingNaam] = useState("");
   const [plaatsnummer, setPlaatsnummer] = useState("");
   const [bestemmingAdres, setBestemmingAdres] = useState("");
   const [bestemmingCoord, setBestemmingCoord] = useState<{ lat: number; lon: number } | null>(
     null,
   );
+
   const [reizigers, setReizigers] = useState<NieuweReiziger[]>([{ naam: "", geboortejaar: "" }]);
   const [fout, setFout] = useState<string | null>(null);
   const [bezig, setBezig] = useState(false);
@@ -47,10 +55,9 @@ export function ReisAanmaken({
   const verplicht = {
     "Naam van de reis": naam.trim() !== "",
     Thuisplaats: thuisplaats.trim() !== "",
-    Bestemming: bestemming.trim() !== "",
-    Land: land.trim() !== "",
     Vertrekdatum: vertrekdatum !== "",
     Terugdatum: terugdatum !== "",
+    Bestemming: bestemming.trim() !== "",
   };
   const ontbreekt = Object.entries(verplicht)
     .filter(([, ingevuld]) => !ingevuld)
@@ -63,21 +70,23 @@ export function ReisAanmaken({
     try {
       const trip = await api.trips.maak({
         naam: naam.trim(),
-        bestemming: bestemming.trim(),
-        land: land.trim(),
-        regio: regio.trim() === "" ? null : regio.trim(),
+        vertrekdatum,
+        terugdatum,
         thuisplaats: thuisplaats.trim(),
         thuisland: thuisland.trim() === "" ? null : thuisland.trim(),
         thuisAdres: thuisAdres.trim() === "" ? null : thuisAdres.trim(),
         thuisLat: thuisCoord?.lat ?? null,
         thuisLon: thuisCoord?.lon ?? null,
-        vertrekdatum,
-        terugdatum,
-        campingNaam: campingNaam.trim() === "" ? null : campingNaam.trim(),
-        plaatsnummer: plaatsnummer.trim() === "" ? null : plaatsnummer.trim(),
-        bestemmingAdres: bestemmingAdres.trim() === "" ? null : bestemmingAdres.trim(),
-        bestemmingLat: bestemmingCoord?.lat ?? null,
-        bestemmingLon: bestemmingCoord?.lon ?? null,
+        bestemming: {
+          plaats: bestemming.trim(),
+          land: land.trim() === "" ? null : land.trim(),
+          regio: regio.trim() === "" ? null : regio.trim(),
+          naam: campingNaam.trim() === "" ? null : campingNaam.trim(),
+          plaatsnummer: plaatsnummer.trim() === "" ? null : plaatsnummer.trim(),
+          adres: bestemmingAdres.trim() === "" ? null : bestemmingAdres.trim(),
+          lat: bestemmingCoord?.lat ?? null,
+          lon: bestemmingCoord?.lon ?? null,
+        },
         reizigers: reizigers
           .filter((reiziger) => reiziger.naam.trim() !== "")
           .map((reiziger) => ({
@@ -98,8 +107,8 @@ export function ReisAanmaken({
       <header className="px-1">
         <h1 className="font-display text-2xl font-extrabold text-ink">Waar gaan we heen?</h1>
         <p className="mt-1 text-sm text-slate">
-          Zes velden zijn verplicht; de rest kun je later aanvullen. De inpaklijst,
-          documenten en etappes komen daarna.
+          Vijf velden zijn verplicht; de rest kun je later aanvullen. Meer bestemmingen, de
+          inpaklijst, documenten en noodnummers komen daarna.
         </p>
       </header>
 
@@ -116,39 +125,6 @@ export function ReisAanmaken({
                 placeholder="Zomer 2026"
                 value={naam}
                 onChange={(event) => setNaam(event.target.value)}
-              />
-            </Veld>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Veld label="Bestemming" verplicht ingevuld={verplicht["Bestemming"]}>
-                <input
-                  className={INVOER_STIJL}
-                  placeholder="Annecy"
-                  value={bestemming}
-                  onChange={(event) => setBestemming(event.target.value)}
-                />
-              </Veld>
-              <Veld label="Land" verplicht ingevuld={verplicht["Land"]}>
-                <select
-                  className={INVOER_STIJL}
-                  value={land}
-                  onChange={(event) => setLand(event.target.value)}
-                >
-                  {BEKENDE_LANDEN.map((naamVanLand) => (
-                    <option key={naamVanLand} value={naamVanLand}>
-                      {naamVanLand}
-                    </option>
-                  ))}
-                </select>
-              </Veld>
-            </div>
-
-            <Veld label="Regio" hint="Mag leeg blijven.">
-              <input
-                className={INVOER_STIJL}
-                placeholder="Haute-Savoie"
-                value={regio}
-                onChange={(event) => setRegio(event.target.value)}
               />
             </Veld>
 
@@ -175,7 +151,7 @@ export function ReisAanmaken({
 
           {/* Waar de reis begint. Nodig voor de route en het weer thuis. */}
           <Kaart className="space-y-3">
-            <h2 className="label-mono text-slate">Waar begint de reis?</h2>
+            <h2 className="label-mono text-slate">Vertrek</h2>
             <div className="grid grid-cols-2 gap-3">
               <Veld
                 label="Thuisplaats"
@@ -228,10 +204,45 @@ export function ReisAanmaken({
         </div>
 
         <div className="space-y-4">
+          {/* De eerste bestemming — een gewone bestemming zoals alle andere;
+              meer (bijvoorbeeld een overnachting onderweg) voeg je later toe. */}
           <Kaart className="space-y-3">
-            <h2 className="label-mono text-slate">Camping</h2>
+            <h2 className="label-mono text-slate">Bestemming</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <Veld label="Plaats" verplicht ingevuld={verplicht["Bestemming"]}>
+                <input
+                  className={INVOER_STIJL}
+                  placeholder="Annecy"
+                  value={bestemming}
+                  onChange={(event) => setBestemming(event.target.value)}
+                />
+              </Veld>
+              <Veld label="Land">
+                <select
+                  className={INVOER_STIJL}
+                  value={land}
+                  onChange={(event) => setLand(event.target.value)}
+                >
+                  {BEKENDE_LANDEN.map((naamVanLand) => (
+                    <option key={naamVanLand} value={naamVanLand}>
+                      {naamVanLand}
+                    </option>
+                  ))}
+                </select>
+              </Veld>
+            </div>
+
+            <Veld label="Regio" hint="Mag leeg blijven.">
+              <input
+                className={INVOER_STIJL}
+                placeholder="Haute-Savoie"
+                value={regio}
+                onChange={(event) => setRegio(event.target.value)}
+              />
+            </Veld>
+
             <div className="grid grid-cols-[1fr_auto] gap-3">
-              <Veld label="Naam">
+              <Veld label="Naam" hint="Camping, hotel, wat dan ook. Optioneel.">
                 <input
                   className={INVOER_STIJL}
                   placeholder="Camping Le Belvedere"
@@ -239,7 +250,7 @@ export function ReisAanmaken({
                   onChange={(event) => setCampingNaam(event.target.value)}
                 />
               </Veld>
-              <Veld label="Plaats">
+              <Veld label="Nummer">
                 <input
                   className={`${INVOER_STIJL} w-24`}
                   placeholder="B14"
@@ -250,7 +261,7 @@ export function ReisAanmaken({
             </div>
 
             <AdresVeld
-              label="Adres van de camping"
+              label="Adres van de bestemming"
               hint="Optioneel. Nauwkeuriger dan de plaatsnaam voor de route en op de kaart."
               placeholder="Camping Le Belvedere, Annecy"
               waarde={bestemmingAdres}
