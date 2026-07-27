@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { query, queryOne, transaction } from "../db.js";
+import { leesDestinationVelden } from "./destinations.js";
 import { verwijderBestand, verwijderReisMap } from "../storage.js";
 import {
   documentStatus,
@@ -7,6 +8,7 @@ import {
   toTraveler,
   toTrip,
   tripColumns,
+  type DestinationRow,
   type DocumentRow,
   type TravelerRow,
   type TripRow,
@@ -40,13 +42,20 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * Maakt een reis aan, eventueel met reizigers in één keer. Dat scheelt het
-   * startscherm een tweede aanroep en houdt de reis en haar reizigers in één
-   * transactie bij elkaar.
+   * Maakt een reis aan, met de eerste bestemming en eventueel reizigers in
+   * één keer. Dat scheelt het startscherm extra aanroepen en houdt alles in
+   * één transactie bij elkaar.
    */
   app.post("/trips", async (request, reply) => {
     const fields = new Fields(request.body);
     const waarden = leesTripVelden(fields);
+
+    if (!fields.has("bestemming")) {
+      throw new ValidationError("bestemming is verplicht: waar gaat de reis naartoe?");
+    }
+    const bestemmingFields = new Fields(fields.raw("bestemming"));
+    const bestemmingWaarden = leesDestinationVelden(bestemmingFields);
+    const bestemmingCoord = leesCoordinaatPaar(bestemmingFields, "lat", "lon");
 
     const reizigers: { naam: string; geboortejaar: number | null }[] = [];
     if (fields.has("reizigers")) {
@@ -65,23 +74,14 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
 
     const trip = await transaction(async (client) => {
       const created = await client.query<TripRow>(
-        `INSERT INTO trip (naam, bestemming, land, regio, vertrekdatum, terugdatum,
-                           camping_naam, plaatsnummer, plaats_info,
-                           afstand_km, rijtijd_min, tol_kosten,
-                           thuisplaats, thuisland, thuisadres, thuis_lat, thuis_lon,
-                           bestemming_adres, bestemming_lat, bestemming_lon)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        `INSERT INTO trip (naam, vertrekdatum, terugdatum, afstand_km, rijtijd_min, tol_kosten,
+                           thuisplaats, thuisland, thuisadres, thuis_lat, thuis_lon)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING ${tripColumns}`,
         [
           waarden.naam,
-          waarden.bestemming,
-          waarden.land,
-          waarden.regio,
           waarden.vertrekdatum,
           waarden.terugdatum,
-          waarden.campingNaam,
-          waarden.plaatsnummer,
-          waarden.plaatsInfo,
           waarden.afstandKm,
           waarden.rijtijdMin,
           waarden.tolKosten,
@@ -90,12 +90,32 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
           waarden.thuisAdres,
           waarden.thuisLat,
           waarden.thuisLon,
-          waarden.bestemmingAdres,
-          waarden.bestemmingLat,
-          waarden.bestemmingLon,
         ],
       );
       const row = created.rows[0]!;
+
+      await client.query<DestinationRow>(
+        `INSERT INTO destination (
+           trip_id, naam, plaats, land, regio, adres, plaatsnummer, opmerking,
+           incheckdatum, inchecktijd, uitcheckdatum, uitchecktijd, volgorde, lat, lon
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13, $14)`,
+        [
+          row.id,
+          bestemmingWaarden.naam,
+          bestemmingWaarden.plaats,
+          bestemmingWaarden.land,
+          bestemmingWaarden.regio,
+          bestemmingWaarden.adres,
+          bestemmingWaarden.plaatsnummer,
+          bestemmingWaarden.opmerking,
+          bestemmingWaarden.incheckdatum,
+          bestemmingWaarden.inchecktijd,
+          bestemmingWaarden.uitcheckdatum,
+          bestemmingWaarden.uitchecktijd,
+          bestemmingCoord.lat,
+          bestemmingCoord.lon,
+        ],
+      );
 
       for (const reiziger of reizigers) {
         await client.query(
@@ -122,43 +142,20 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
 
     const kolommen: Record<string, unknown> = {};
     if (fields.has("naam")) kolommen["naam"] = fields.text("naam", { max: 120 });
-    if (fields.has("bestemming")) kolommen["bestemming"] = fields.text("bestemming", { max: 120 });
-    if (fields.has("land")) kolommen["land"] = fields.text("land", { max: 120 });
     if (fields.has("thuisplaats")) kolommen["thuisplaats"] = fields.optionalText("thuisplaats", { max: 160 });
     if (fields.has("thuisland")) kolommen["thuisland"] = fields.optionalText("thuisland", { max: 120 });
     if (fields.has("thuisAdres")) kolommen["thuisadres"] = fields.optionalText("thuisAdres", { max: 300 });
-    if (fields.has("bestemmingAdres")) {
-      kolommen["bestemming_adres"] = fields.optionalText("bestemmingAdres", { max: 300 });
-    }
-    if (fields.has("regio")) kolommen["regio"] = fields.optionalText("regio", { max: 120 });
     if (fields.has("vertrekdatum")) kolommen["vertrekdatum"] = fields.date("vertrekdatum");
     if (fields.has("terugdatum")) kolommen["terugdatum"] = fields.date("terugdatum");
-    if (fields.has("campingNaam")) kolommen["camping_naam"] = fields.optionalText("campingNaam", { max: 160 });
-    if (fields.has("plaatsnummer")) kolommen["plaatsnummer"] = fields.optionalText("plaatsnummer", { max: 40 });
-    if (fields.has("plaatsInfo")) kolommen["plaats_info"] = fields.optionalText("plaatsInfo", { max: 1000 });
     if (fields.has("afstandKm")) kolommen["afstand_km"] = fields.optionalNumber("afstandKm", { max: 30_000 });
     if (fields.has("rijtijdMin")) kolommen["rijtijd_min"] = fields.optionalNumber("rijtijdMin", { max: 100_000 });
     if (fields.has("tolKosten")) kolommen["tol_kosten"] = fields.optionalNumber("tolKosten", { max: 10_000 });
 
     // Stuurt de autocomplete verse coördinaten mee, dan zijn die geverifieerd
-    // en gaan ze direct de database in — dat overschrijft de invalidatie
-    // hieronder. Verandert een plaatsnaam of het adres zonder nieuwe
-    // coördinaten, dan kloppen de oude niet meer en worden ze leeggemaakt; bij
-    // de volgende weer- of route-aanvraag zoekt de app de stad dan opnieuw op.
-    const bestemmingCoord = leesCoordinaatPaar(fields, "bestemmingLat", "bestemmingLon");
-    if (bestemmingCoord.lat !== null) {
-      kolommen["bestemming_lat"] = bestemmingCoord.lat;
-      kolommen["bestemming_lon"] = bestemmingCoord.lon;
-    } else if (
-      (kolommen["bestemming"] !== undefined && kolommen["bestemming"] !== bestaand.bestemming) ||
-      (kolommen["land"] !== undefined && kolommen["land"] !== bestaand.land) ||
-      (kolommen["bestemming_adres"] !== undefined &&
-        kolommen["bestemming_adres"] !== bestaand.bestemming_adres)
-    ) {
-      kolommen["bestemming_lat"] = null;
-      kolommen["bestemming_lon"] = null;
-    }
-
+    // en gaan ze direct de database in. Verandert de plaatsnaam of het adres
+    // zonder nieuwe coördinaten, dan kloppen de oude niet meer en worden ze
+    // leeggemaakt; bij de volgende weer- of route-aanvraag zoekt de app de
+    // stad dan opnieuw op.
     const thuisCoord = leesCoordinaatPaar(fields, "thuisLat", "thuisLon");
     if (thuisCoord.lat !== null) {
       kolommen["thuis_lat"] = thuisCoord.lat;
@@ -222,8 +219,8 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
       [id],
     );
 
-    const etappes = await queryOne<{ aantal: number }>(
-      `SELECT count(*)::int AS aantal FROM stop WHERE trip_id = $1`,
+    const bestemmingen = await queryOne<{ aantal: number }>(
+      `SELECT count(*)::int AS aantal FROM destination WHERE trip_id = $1`,
       [id],
     );
     const noodnummers = await queryOne<{ aantal: number }>(
@@ -241,7 +238,7 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
       },
       inpaklijsten: { ...voortgang(pakItems.rows), lijsten: lijsten?.aantal ?? 0 },
       onderweg: {
-        etappes: etappes?.aantal ?? 0,
+        bestemmingen: bestemmingen?.aantal ?? 0,
         noodnummers: noodnummers?.aantal ?? 0,
       },
     };
@@ -344,17 +341,10 @@ function leesTripVelden(fields: Fields) {
     throw new ValidationError("De terugdatum kan niet voor de vertrekdatum liggen");
   }
   const thuisCoord = leesCoordinaatPaar(fields, "thuisLat", "thuisLon");
-  const bestemmingCoord = leesCoordinaatPaar(fields, "bestemmingLat", "bestemmingLon");
   return {
     naam: fields.text("naam", { max: 120 }),
-    bestemming: fields.text("bestemming", { max: 120 }),
-    land: fields.text("land", { max: 120 }),
-    regio: fields.optionalText("regio", { max: 120 }),
     vertrekdatum,
     terugdatum,
-    campingNaam: fields.optionalText("campingNaam", { max: 160 }),
-    plaatsnummer: fields.optionalText("plaatsnummer", { max: 40 }),
-    plaatsInfo: fields.optionalText("plaatsInfo", { max: 1000 }),
     afstandKm: fields.optionalNumber("afstandKm", { max: 30_000 }),
     rijtijdMin: fields.optionalNumber("rijtijdMin", { max: 100_000 }),
     tolKosten: fields.optionalNumber("tolKosten", { max: 10_000 }),
@@ -366,8 +356,5 @@ function leesTripVelden(fields: Fields) {
     thuisAdres: fields.optionalText("thuisAdres", { max: 300 }),
     thuisLat: thuisCoord.lat,
     thuisLon: thuisCoord.lon,
-    bestemmingAdres: fields.optionalText("bestemmingAdres", { max: 300 }),
-    bestemmingLat: bestemmingCoord.lat,
-    bestemmingLon: bestemmingCoord.lon,
   };
 }

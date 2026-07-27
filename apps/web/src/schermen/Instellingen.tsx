@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AdresVeld } from "../components/AdresVeld.tsx";
+import { Bestemmingen } from "../components/Bestemmingen.tsx";
 import {
   Bevestiging,
   INVOER_STIJL,
@@ -12,7 +13,13 @@ import {
 import { api, type TripMetReizigers } from "../lib/api.ts";
 import { BEKENDE_LANDEN } from "../lib/format.ts";
 
-/** Reis bewerken, reizigers beheren, reis verwijderen met bevestiging. */
+/**
+ * Reis bewerken, reizigers beheren, reis verwijderen met bevestiging.
+ *
+ * Eerst alles wat bij vertrek hoort (De reis, Vertrek), dan de bestemmingen —
+ * in die volgorde vul je een reis ook echt in: waar het begint, dan waar het
+ * naartoe gaat, eventueel in meerdere etappes.
+ */
 export function Instellingen({
   trip,
   onBijgewerkt,
@@ -23,9 +30,9 @@ export function Instellingen({
   onVerwijderd: () => void;
 }) {
   const [naam, setNaam] = useState(trip.naam);
-  const [bestemming, setBestemming] = useState(trip.bestemming);
-  const [land, setLand] = useState(trip.land);
-  const [regio, setRegio] = useState(trip.regio ?? "");
+  const [vertrekdatum, setVertrekdatum] = useState(trip.vertrekdatum);
+  const [terugdatum, setTerugdatum] = useState(trip.terugdatum);
+
   const [thuisplaats, setThuisplaats] = useState(trip.thuisplaats ?? "");
   const [thuisland, setThuisland] = useState(trip.thuisland ?? "Nederland");
   const [thuisAdres, setThuisAdres] = useState(trip.thuisAdres ?? "");
@@ -37,18 +44,6 @@ export function Instellingen({
   const thuisGeverifieerd =
     thuisCoordVers !== null || (thuisAdres === (trip.thuisAdres ?? "") && trip.thuisAdresGeverifieerd);
 
-  const [vertrekdatum, setVertrekdatum] = useState(trip.vertrekdatum);
-  const [terugdatum, setTerugdatum] = useState(trip.terugdatum);
-  const [campingNaam, setCampingNaam] = useState(trip.campingNaam ?? "");
-  const [plaatsnummer, setPlaatsnummer] = useState(trip.plaatsnummer ?? "");
-  const [plaatsInfo, setPlaatsInfo] = useState(trip.plaatsInfo ?? "");
-  const [bestemmingAdres, setBestemmingAdres] = useState(trip.bestemmingAdres ?? "");
-  const [bestemmingCoordVers, setBestemmingCoordVers] = useState<{ lat: number; lon: number } | null>(
-    null,
-  );
-  const bestemmingGeverifieerd =
-    bestemmingCoordVers !== null ||
-    (bestemmingAdres === (trip.bestemmingAdres ?? "") && trip.bestemmingAdresGeverifieerd);
   const [afstandKm, setAfstandKm] = useState(trip.afstandKm?.toString() ?? "");
   const [rijtijdMin, setRijtijdMin] = useState(trip.rijtijdMin?.toString() ?? "");
   const [tolKosten, setTolKosten] = useState(trip.tolKosten?.toString() ?? "");
@@ -95,38 +90,29 @@ export function Instellingen({
         </Veld>
 
         <div className="grid grid-cols-2 gap-3">
-          <Veld label="Bestemming">
+          <Veld label="Vertrek">
             <input
+              type="date"
               className={INVOER_STIJL}
-              value={bestemming}
-              onChange={(event) => setBestemming(event.target.value)}
+              value={vertrekdatum}
+              onChange={(event) => setVertrekdatum(event.target.value)}
             />
           </Veld>
-          <Veld label="Land">
-            <select
+          <Veld label="Terug">
+            <input
+              type="date"
               className={INVOER_STIJL}
-              value={BEKENDE_LANDEN.includes(land) ? land : ""}
-              onChange={(event) => setLand(event.target.value)}
-            >
-              {!BEKENDE_LANDEN.includes(land) && <option value="">{land}</option>}
-              {BEKENDE_LANDEN.map((naamVanLand) => (
-                <option key={naamVanLand} value={naamVanLand}>
-                  {naamVanLand}
-                </option>
-              ))}
-            </select>
+              min={vertrekdatum}
+              value={terugdatum}
+              onChange={(event) => setTerugdatum(event.target.value)}
+            />
           </Veld>
         </div>
+      </Kaart>
 
-        <Veld label="Regio">
-          <input
-            className={INVOER_STIJL}
-            value={regio}
-            onChange={(event) => setRegio(event.target.value)}
-          />
-        </Veld>
-
-        {/* Vertrekpunt voor de route en plaats voor het weer thuis. */}
+      {/* Waar de reis begint. Vertrekpunt voor de route en plaats voor het weer thuis. */}
+      <Kaart className="space-y-3">
+        <KaartKop>Vertrek</KaartKop>
         <div className="grid grid-cols-2 gap-3">
           <Veld
             label="Thuisplaats"
@@ -157,26 +143,6 @@ export function Instellingen({
           </Veld>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Veld label="Vertrek">
-            <input
-              type="date"
-              className={INVOER_STIJL}
-              value={vertrekdatum}
-              onChange={(event) => setVertrekdatum(event.target.value)}
-            />
-          </Veld>
-          <Veld label="Terug">
-            <input
-              type="date"
-              className={INVOER_STIJL}
-              min={vertrekdatum}
-              value={terugdatum}
-              onChange={(event) => setTerugdatum(event.target.value)}
-            />
-          </Veld>
-        </div>
-
         <AdresVeld
           label="Preciezer thuisadres"
           hint="Optioneel. Voor een nauwkeurigere route en op de kaart."
@@ -194,49 +160,47 @@ export function Instellingen({
         />
       </Kaart>
 
-      <Kaart className="space-y-3">
-        <KaartKop>Camping</KaartKop>
-        <div className="grid grid-cols-[1fr_auto] gap-3">
-          <Veld label="Naam">
-            <input
-              className={INVOER_STIJL}
-              value={campingNaam}
-              onChange={(event) => setCampingNaam(event.target.value)}
-            />
-          </Veld>
-          <Veld label="Plaats">
-            <input
-              className={`${INVOER_STIJL} w-24`}
-              value={plaatsnummer}
-              onChange={(event) => setPlaatsnummer(event.target.value)}
-            />
-          </Veld>
-        </div>
-        <Veld label="Over de plek">
-          <input
-            className={INVOER_STIJL}
-            placeholder="Schaduw, bij het water"
-            value={plaatsInfo}
-            onChange={(event) => setPlaatsInfo(event.target.value)}
-          />
-        </Veld>
+      <div className="flex items-center gap-3">
+        <Knop
+          soort="primair"
+          breed
+          disabled={bezig || naam.trim() === ""}
+          onClick={() =>
+            void metFout(async () => {
+              await api.trips.werkBij(trip.id, {
+                naam: naam.trim(),
+                vertrekdatum,
+                terugdatum,
+                thuisplaats: thuisplaats.trim() === "" ? null : thuisplaats.trim(),
+                thuisland: thuisland.trim() === "" ? null : thuisland.trim(),
+                thuisAdres: thuisAdres.trim() === "" ? null : thuisAdres.trim(),
+                // Alleen meesturen als er in deze sessie echt een nieuwe
+                // suggestie gekozen is — anders blijven bestaande coördinaten
+                // gewoon staan (of vervallen ze, als het adres wél veranderd
+                // is zonder nieuwe keuze; dat regelt de api zelf).
+                thuisLat: thuisCoordVers?.lat,
+                thuisLon: thuisCoordVers?.lon,
+                afstandKm: getal(afstandKm),
+                rijtijdMin: getal(rijtijdMin),
+                tolKosten: getal(tolKosten),
+              });
+              onBijgewerkt();
+              setBewaard(true);
+              window.setTimeout(() => setBewaard(false), 2500);
+            })
+          }
+        >
+          Bewaar de wijzigingen
+        </Knop>
+        {bewaard && (
+          <span className="label-mono shrink-0 text-forest" role="status">
+            bewaard
+          </span>
+        )}
+      </div>
 
-        <AdresVeld
-          label="Adres van de camping"
-          hint="Optioneel. Nauwkeuriger dan de plaatsnaam voor de route en op de kaart."
-          placeholder="Camping Le Belvedere, Annecy"
-          waarde={bestemmingAdres}
-          geverifieerd={bestemmingGeverifieerd}
-          onWijzig={(tekst) => {
-            setBestemmingAdres(tekst);
-            setBestemmingCoordVers(null);
-          }}
-          onKies={(suggestie) => {
-            setBestemmingAdres(suggestie.label);
-            setBestemmingCoordVers({ lat: suggestie.lat, lon: suggestie.lon });
-          }}
-        />
-      </Kaart>
+      {/* Bestemmingen: van thuis tot de eindbestemming, zelf toe te voegen. */}
+      <Bestemmingen tripId={trip.id} onGewijzigd={onBijgewerkt} />
 
       <Kaart className="space-y-3">
         <KaartKop>De rit</KaartKop>
@@ -266,55 +230,10 @@ export function Instellingen({
             />
           </Veld>
         </div>
+        <p className="text-xs text-slate">
+          Vul je zelf niets in, dan gebruikt het overzicht de berekende route.
+        </p>
       </Kaart>
-
-      <div className="flex items-center gap-3">
-        <Knop
-          soort="primair"
-          breed
-          disabled={bezig || naam.trim() === "" || bestemming.trim() === ""}
-          onClick={() =>
-            void metFout(async () => {
-              await api.trips.werkBij(trip.id, {
-                naam: naam.trim(),
-                bestemming: bestemming.trim(),
-                land: land.trim(),
-                regio: regio.trim() === "" ? null : regio.trim(),
-                thuisplaats: thuisplaats.trim() === "" ? null : thuisplaats.trim(),
-                thuisland: thuisland.trim() === "" ? null : thuisland.trim(),
-                thuisAdres: thuisAdres.trim() === "" ? null : thuisAdres.trim(),
-                // Alleen meesturen als er in deze sessie echt een nieuwe
-                // suggestie gekozen is — anders blijven bestaande coördinaten
-                // gewoon staan (of vervallen ze, als het adres wél veranderd
-                // is zonder nieuwe keuze; dat regelt de api zelf).
-                thuisLat: thuisCoordVers?.lat,
-                thuisLon: thuisCoordVers?.lon,
-                vertrekdatum,
-                terugdatum,
-                campingNaam: campingNaam.trim() === "" ? null : campingNaam.trim(),
-                plaatsnummer: plaatsnummer.trim() === "" ? null : plaatsnummer.trim(),
-                plaatsInfo: plaatsInfo.trim() === "" ? null : plaatsInfo.trim(),
-                bestemmingAdres: bestemmingAdres.trim() === "" ? null : bestemmingAdres.trim(),
-                bestemmingLat: bestemmingCoordVers?.lat,
-                bestemmingLon: bestemmingCoordVers?.lon,
-                afstandKm: getal(afstandKm),
-                rijtijdMin: getal(rijtijdMin),
-                tolKosten: getal(tolKosten),
-              });
-              onBijgewerkt();
-              setBewaard(true);
-              window.setTimeout(() => setBewaard(false), 2500);
-            })
-          }
-        >
-          Bewaar de wijzigingen
-        </Knop>
-        {bewaard && (
-          <span className="label-mono shrink-0 text-forest" role="status">
-            bewaard
-          </span>
-        )}
-      </div>
 
       <Kaart className="space-y-2">
         <KaartKop>Reizigers</KaartKop>
@@ -401,7 +320,7 @@ export function Instellingen({
       {vraagVerwijderen ? (
         <Bevestiging
           vraag={`De reis "${trip.naam}" verwijderen?`}
-          toelichting="Alle reizigers, documenten, inpaklijsten, etappes en noodnummers gaan mee. De geüploade bestanden worden ook van schijf gehaald. Dit kun je niet ongedaan maken."
+          toelichting="Alle reizigers, documenten, inpaklijsten, bestemmingen en noodnummers gaan mee. De geüploade bestanden worden ook van schijf gehaald. Dit kun je niet ongedaan maken."
           bevestigLabel="Verwijder de reis"
           onAnnuleer={() => setVraagVerwijderen(false)}
           onBevestig={() =>

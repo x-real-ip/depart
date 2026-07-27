@@ -73,14 +73,8 @@ export type DocumentStatus = "ontbreekt" | "let op" | "geldig";
 export interface Trip {
   id: string;
   naam: string;
-  bestemming: string;
-  land: string;
-  regio: string | null;
   vertrekdatum: string;
   terugdatum: string;
-  campingNaam: string | null;
-  plaatsnummer: string | null;
-  plaatsInfo: string | null;
   afstandKm: number | null;
   rijtijdMin: number | null;
   tolKosten: number | null;
@@ -89,11 +83,8 @@ export interface Trip {
   thuisland: string | null;
   /** Preciezer, via autocomplete gekozen adres — voor de route en de kaart. */
   thuisAdres: string | null;
-  bestemmingAdres: string | null;
   /** Of er coördinaten bij dit adres horen (een gekozen suggestie, of eerder al opgezocht). */
   thuisAdresGeverifieerd: boolean;
-  bestemmingAdresGeverifieerd: boolean;
-  nachten: number;
 }
 
 export interface TripMetReizigers extends Trip {
@@ -141,28 +132,46 @@ export interface PackItem {
 /** Startset voor een nieuwe lijst: kampeer-basisuitrusting of persoonlijke spullen. */
 export type StandaardSoort = "uitrusting" | "persoonlijk";
 
-export interface Stop {
+/**
+ * Een plek waar je bent tijdens de reis — van een korte tussenstop tot de
+ * eindbestemming. Hetzelfde soort ding, alleen met meer of minder ingevuld:
+ * een tussenstop heeft misschien alleen een plaats en een inchecktijd, een
+ * meerdaags verblijf heeft er ook een adres en incheck-/uitcheckdatum bij.
+ * Geordend op `volgorde`; de laatste is de eindbestemming van de reis.
+ */
+export interface Destination {
   id: string;
   tripId: string;
+  naam: string | null;
   plaats: string;
-  tijd: string | null;
-  opmerking: string | null;
-  volgorde: number;
-  /** Een overnachting onderweg, of alleen een tussenstop van een paar uur. */
-  overnachting: boolean;
+  land: string | null;
+  regio: string | null;
   adres: string | null;
-  nachten: number | null;
+  plaatsnummer: string | null;
+  opmerking: string | null;
+  incheckdatum: string | null;
+  inchecktijd: string | null;
+  uitcheckdatum: string | null;
+  uitchecktijd: string | null;
+  volgorde: number;
   /** Of dit adres coördinaten heeft — via een gekozen suggestie. */
   adresGeverifieerd: boolean;
+  /** Alleen als beide datums ingevuld zijn; anders is er niets te tellen. */
+  nachten: number | null;
 }
 
-export interface NieuweStop {
+export interface NieuweDestination {
+  naam?: string | null;
   plaats: string;
-  tijd: string | null;
-  opmerking: string | null;
-  overnachting: boolean;
-  adres: string | null;
-  nachten: number | null;
+  land?: string | null;
+  regio?: string | null;
+  adres?: string | null;
+  plaatsnummer?: string | null;
+  opmerking?: string | null;
+  incheckdatum?: string | null;
+  inchecktijd?: string | null;
+  uitcheckdatum?: string | null;
+  uitchecktijd?: string | null;
   lat?: number | null;
   lon?: number | null;
 }
@@ -221,9 +230,9 @@ export interface RouteInfo {
   geometrie: [number, number][];
 }
 
-export type PuntRol = "thuis" | "overnachting" | "bestemming";
+export type PuntRol = "thuis" | "onderweg" | "bestemming";
 
-/** Eén punt op de kaart: thuis, een overnachting, of de bestemming. */
+/** Eén punt op de kaart: thuis, een tussenliggende bestemming, of de eindbestemming. */
 export interface RoutePunt {
   naam: string;
   rol: PuntRol;
@@ -234,7 +243,8 @@ export interface RoutePunt {
 export interface RouteAntwoord {
   route: RouteInfo | null;
   reden: string;
-  overnachtingen?: number;
+  /** Aantal tussenliggende bestemmingen (niet de eerste of de laatste). */
+  onderweg?: number;
   /** Leeg zolang er geen coördinaten bekend zijn; anders altijd gevuld, ook als de route zelf niet lukte. */
   punten: RoutePunt[];
 }
@@ -243,6 +253,7 @@ export interface RouteAntwoord {
 export const REDEN_TEKST: Record<string, string> = {
   uitgeschakeld: "De koppeling met externe diensten staat uit.",
   "geen-thuisplaats": "Vul eerst je thuisplaats in bij de instellingen.",
+  "geen-bestemming": "Voeg eerst een bestemming toe.",
   "plaats-niet-gevonden": "Deze plaatsnaam is niet gevonden. Probeer een grotere plaats in de buurt.",
   "dienst-onbereikbaar":
     "De dienst is nu niet bereikbaar — dit ligt niet aan je invoer. Probeer het later opnieuw.",
@@ -253,6 +264,7 @@ export const REDEN_TEKST: Record<string, string> = {
 export const REDEN_KORT: Record<string, string> = {
   uitgeschakeld: "koppeling staat uit",
   "geen-thuisplaats": "thuisplaats ontbreekt",
+  "geen-bestemming": "geen bestemming",
   "plaats-niet-gevonden": "plaatsnaam niet gevonden",
   "dienst-onbereikbaar": "dienst niet bereikbaar",
 };
@@ -275,19 +287,13 @@ export interface Overzicht {
   documenten: { totaal: number; ontbreekt: number; letOp: number; geldig: number };
   /** Over alle inpaklijsten heen: hoeveel er zijn en hoe ver je bent. */
   inpaklijsten: Voortgang & { lijsten: number };
-  onderweg: { etappes: number; noodnummers: number };
+  onderweg: { bestemmingen: number; noodnummers: number };
 }
 
 export interface NieuweTrip {
   naam: string;
-  bestemming: string;
-  land: string;
-  regio?: string | null;
   vertrekdatum: string;
   terugdatum: string;
-  campingNaam?: string | null;
-  plaatsnummer?: string | null;
-  plaatsInfo?: string | null;
   afstandKm?: number | null;
   rijtijdMin?: number | null;
   tolKosten?: number | null;
@@ -296,9 +302,8 @@ export interface NieuweTrip {
   thuisAdres?: string | null;
   thuisLat?: number | null;
   thuisLon?: number | null;
-  bestemmingAdres?: string | null;
-  bestemmingLat?: number | null;
-  bestemmingLon?: number | null;
+  /** De eerste bestemming van de reis; meer kunnen daarna toegevoegd worden. */
+  bestemming: NieuweDestination;
   reizigers?: { naam: string; geboortejaar: number | null }[];
 }
 
@@ -402,15 +407,19 @@ export const api = {
     verwijder: (id: string) => verzoek("DELETE", `/api/pack-items/${id}`) as Promise<null>,
   },
 
-  etappes: {
-    lijst: (tripId: string) => verzoek("GET", `/api/trips/${tripId}/stops`) as Promise<Stop[]>,
-    voegToe: (tripId: string, velden: NieuweStop) =>
-      verzoek("POST", `/api/trips/${tripId}/stops`, velden) as Promise<Stop>,
-    werkBij: (id: string, velden: Partial<NieuweStop>) =>
-      verzoek("PATCH", `/api/stops/${id}`, velden) as Promise<Stop>,
+  /** Bestemmingen: van thuis tot de eindbestemming, in volgorde. */
+  destinations: {
+    lijst: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/destinations`) as Promise<Destination[]>,
+    voegToe: (tripId: string, velden: NieuweDestination) =>
+      verzoek("POST", `/api/trips/${tripId}/destinations`, velden) as Promise<Destination>,
+    werkBij: (id: string, velden: Partial<NieuweDestination>) =>
+      verzoek("PATCH", `/api/destinations/${id}`, velden) as Promise<Destination>,
     herorden: (tripId: string, ids: string[]) =>
-      verzoek("PUT", `/api/trips/${tripId}/stops/volgorde`, { ids }) as Promise<Stop[]>,
-    verwijder: (id: string) => verzoek("DELETE", `/api/stops/${id}`) as Promise<null>,
+      verzoek("PUT", `/api/trips/${tripId}/destinations/volgorde`, { ids }) as Promise<
+        Destination[]
+      >,
+    verwijder: (id: string) => verzoek("DELETE", `/api/destinations/${id}`) as Promise<null>,
   },
 
   /** Actuele gegevens van buiten: weer op de bestemming en thuis, en de route. */

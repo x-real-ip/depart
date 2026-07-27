@@ -5,7 +5,7 @@ import { MapContainer, Marker, Polyline, TileLayer } from "react-leaflet";
 import type { PuntRol, RoutePunt } from "../lib/api.ts";
 
 /**
- * Kaart met vertrekpunt, overnachtingen en eindbestemming, met de route
+ * Kaart met vertrekpunt, tussenliggende bestemmingen en eindbestemming, met de route
  * ertussen als lijn. OpenStreetMap-tegels, geen sleutel nodig — zelfde soort
  * dienst als het weer en de route.
  *
@@ -17,13 +17,13 @@ import type { PuntRol, RoutePunt } from "../lib/api.ts";
 
 const KLEUR_PER_ROL: Record<PuntRol, string> = {
   thuis: "#12283C",
-  overnachting: "#FFB703",
+  onderweg: "#FFB703",
   bestemming: "#2F6B4F",
 };
 
 const LABEL_PER_ROL: Record<PuntRol, string> = {
   thuis: "Thuis",
-  overnachting: "Overnachting",
+  onderweg: "Onderweg",
   bestemming: "Bestemming",
 };
 
@@ -38,7 +38,7 @@ function maakIcoon(kleur: string): L.DivIcon {
 
 const ICONEN: Record<PuntRol, L.DivIcon> = {
   thuis: maakIcoon(KLEUR_PER_ROL.thuis),
-  overnachting: maakIcoon(KLEUR_PER_ROL.overnachting),
+  onderweg: maakIcoon(KLEUR_PER_ROL.onderweg),
   bestemming: maakIcoon(KLEUR_PER_ROL.bestemming),
 };
 
@@ -107,7 +107,7 @@ export function Landkaart({
 
       {/* Legenda: welke kleur staat voor wat. */}
       <div className="flex flex-wrap gap-3">
-        {(["thuis", "overnachting", "bestemming"] as const).map((rol) => (
+        {(["thuis", "onderweg", "bestemming"] as const).map((rol) => (
           <span key={rol} className="flex items-center gap-1.5 text-xs text-slate">
             <span
               aria-hidden="true"

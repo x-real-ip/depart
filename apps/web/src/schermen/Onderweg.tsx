@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AdresVeld } from "../components/AdresVeld.tsx";
+import { Bestemmingen } from "../components/Bestemmingen.tsx";
 import { Landkaart } from "../components/Landkaart.tsx";
 import {
   INVOER_STIJL,
@@ -15,33 +15,28 @@ import {
   REDEN_TEKST,
   api,
   type Contact,
-  type NieuweStop,
+  type Destination,
   type RouteAntwoord,
-  type Stop,
   type Trip,
 } from "../lib/api.ts";
 import { afstand, bedrag, rijtijd, verplichtInDeAuto } from "../lib/format.ts";
 
 export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzigd: () => void }) {
-  const [etappes, setEtappes] = useState<Stop[] | null>(null);
+  const [bestemmingen, setBestemmingen] = useState<Destination[] | null>(null);
   const [nummers, setNummers] = useState<Contact[] | null>(null);
   const [route, setRoute] = useState<RouteAntwoord | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const [bezig, setBezig] = useState(false);
-  const [bewerkt, setBewerkt] = useState<string | null>(null);
 
   const [nieuwLabel, setNieuwLabel] = useState("");
   const [nieuwNummer, setNieuwNummer] = useState("");
 
-  // Welke etappe wordt op dit moment versleept.
-  const [gesleept, setGesleept] = useState<string | null>(null);
-
   useEffect(() => {
     let actueel = true;
-    Promise.all([api.etappes.lijst(trip.id), api.noodnummers.lijst(trip.id)])
-      .then(([stops, contacts]) => {
+    Promise.all([api.destinations.lijst(trip.id), api.noodnummers.lijst(trip.id)])
+      .then(([destinations, contacts]) => {
         if (!actueel) return;
-        setEtappes(stops);
+        setBestemmingen(destinations);
         setNummers(contacts);
       })
       .catch((error: Error) => {
@@ -52,9 +47,7 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
     };
   }, [trip.id]);
 
-  /** De route verandert zodra een overnachting erbij komt of verschuift. */
   async function herlaadRoute(): Promise<void> {
-    setRoute(null);
     setRoute(await api.reisinfo.route(trip.id));
   }
 
@@ -62,6 +55,20 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
     void herlaadRoute();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip.id]);
+
+  /**
+   * Na een wijziging in de bestemmingenlijst (via het gedeelde component) de
+   * route herberekenen én onze eigen kopie van de lijst verversen — die
+   * gebruiken we hier alleen om de landen te bepalen voor "Verplicht in de auto".
+   */
+  async function herlaadNaWijziging(): Promise<void> {
+    const [nieuweRoute, nieuweBestemmingen] = await Promise.all([
+      api.reisinfo.route(trip.id),
+      api.destinations.lijst(trip.id),
+    ]);
+    setRoute(nieuweRoute);
+    setBestemmingen(nieuweBestemmingen);
+  }
 
   async function metFout(werk: () => Promise<void>): Promise<void> {
     setBezig(true);
@@ -75,39 +82,16 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
     }
   }
 
-  /** Verplaatst een etappe naar een nieuwe plek en slaat de volgorde op. */
-  async function verplaats(vanId: string, naarId: string): Promise<void> {
-    const huidig = etappes ?? [];
-    const vanIndex = huidig.findIndex((etappe) => etappe.id === vanId);
-    const naarIndex = huidig.findIndex((etappe) => etappe.id === naarId);
-    if (vanIndex === -1 || naarIndex === -1 || vanIndex === naarIndex) return;
+  if (fout !== null && bestemmingen === null) return <Melding tekst={fout} />;
+  if (bestemmingen === null || nummers === null) return <Laden />;
 
-    const nieuw = [...huidig];
-    const [verplaatst] = nieuw.splice(vanIndex, 1);
-    nieuw.splice(naarIndex, 0, verplaatst!);
-    setEtappes(nieuw);
-
-    try {
-      const opgeslagen = await api.etappes.herorden(
-        trip.id,
-        nieuw.map((etappe) => etappe.id),
-      );
-      setEtappes(opgeslagen);
-      if (opgeslagen.some((etappe) => etappe.overnachting)) await herlaadRoute();
-    } catch (error) {
-      setEtappes(huidig);
-      setFout((error as Error).message);
-    }
-  }
-
-  if (fout !== null && etappes === null) return <Melding tekst={fout} />;
-  if (etappes === null || nummers === null) return <Laden />;
-
-  const overnachtingen = etappes.filter((etappe) => etappe.overnachting);
-  const nachtenOnderweg = overnachtingen.reduce(
-    (som, etappe) => som + (etappe.nachten ?? 0),
-    0,
-  );
+  // Landen waar je doorheen rijdt of verblijft, op volgorde van de eerste
+  // bestemming waar dat land bij hoort — een reis kan door meerdere landen gaan.
+  const landen = [
+    ...new Set(
+      bestemmingen.map((b) => b.land).filter((land): land is string => land !== null),
+    ),
+  ];
 
   return (
     <div className="space-y-4">
@@ -147,13 +131,6 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
           </div>
         </dl>
 
-        {nachtenOnderweg > 0 && (
-          <p className="mt-3 text-sm text-slate">
-            {overnachtingen.length === 1 ? "Eén overnachting" : `${overnachtingen.length} overnachtingen`}{" "}
-            onderweg, samen {nachtenOnderweg} {nachtenOnderweg === 1 ? "nacht" : "nachten"}.
-          </p>
-        )}
-
         {/* De berekende waarden kunnen afwijken van wat je zelf invulde. */}
         {route?.route != null &&
           (route.route.totaalAfstandKm !== trip.afstandKm ||
@@ -184,10 +161,10 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
           )}
       </Kaart>
 
-      {/* Route van huis via de overnachtingen naar de bestemming. */}
+      {/* Route van huis via de bestemmingen onderweg naar de eindbestemming. */}
       <RouteEtappes route={route} />
 
-      {/* De route als kaart: vertrekpunt, overnachtingen en bestemming. */}
+      {/* De route als kaart: vertrekpunt, bestemmingen onderweg en eindbestemming. */}
       {route !== null && route.punten.length > 0 && (
         <Kaart>
           <KaartKop>Kaart</KaartKop>
@@ -196,177 +173,35 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
       )}
 
       <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
-        {/* Etappes, te verslepen om te sorteren. */}
-        <Kaart className="p-0">
-          <div className="px-4 pt-4">
-            <KaartKop
-              extra={
-                etappes.length > 1 ? (
-                  <span className="text-xs text-slate">Versleep om te sorteren</span>
-                ) : undefined
-              }
-            >
-              Etappes
-            </KaartKop>
-          </div>
-
-          {etappes.length === 0 ? (
-            <LegeStaat
-              titel="Nog geen etappes"
-              uitnodiging="Zet je eerste stop erin, bijvoorbeeld waar je gaat tanken of overnachten."
-            />
-          ) : (
-            <ol className="divide-y divide-slate/12">
-              {etappes.map((etappe, index) => (
-                <li
-                  key={etappe.id}
-                  draggable={bewerkt === null}
-                  onDragStart={() => setGesleept(etappe.id)}
-                  onDragEnd={() => setGesleept(null)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    if (gesleept !== null) void verplaats(gesleept, etappe.id);
-                    setGesleept(null);
-                  }}
-                  className={`px-4 py-3 ${gesleept === etappe.id ? "opacity-45" : ""}`}
-                >
-                  {bewerkt === etappe.id ? (
-                    <EtappeFormulier
-                      begin={etappe}
-                      bezig={bezig}
-                      bevestigLabel="Opslaan"
-                      onBevestig={(velden) =>
-                        void metFout(async () => {
-                          const bijgewerkt = await api.etappes.werkBij(etappe.id, velden);
-                          setEtappes(
-                            (etappes ?? []).map((e) => (e.id === etappe.id ? bijgewerkt : e)),
-                          );
-                          setBewerkt(null);
-                          if (bijgewerkt.overnachting || etappe.overnachting) {
-                            await herlaadRoute();
-                          }
-                        })
-                      }
-                      onAnnuleer={() => setBewerkt(null)}
-                    />
-                  ) : (
-                    <div className="flex items-start gap-3">
-                      <span
-                        aria-hidden="true"
-                        className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold ${
-                          etappe.overnachting
-                            ? "bg-forest text-white"
-                            : "bg-navy text-canvas"
-                        }`}
-                      >
-                        {index + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-semibold text-ink">
-                          {etappe.plaats}
-                          {etappe.overnachting && (
-                            <span className="label-mono rounded-full bg-forest/12 px-2 py-0.5 text-forest">
-                              {etappe.nachten === 1
-                                ? "1 nacht"
-                                : `${etappe.nachten ?? 0} nachten`}
-                            </span>
-                          )}
-                        </p>
-                        {etappe.adres !== null && (
-                          <p className="mt-0.5 truncate text-xs text-slate">{etappe.adres}</p>
-                        )}
-                        {etappe.opmerking !== null && (
-                          <p className="mt-0.5 text-xs text-slate">{etappe.opmerking}</p>
-                        )}
-                      </div>
-                      <span className="shrink-0 font-mono text-sm font-semibold text-ink">
-                        {etappe.tijd ?? "—"}
-                      </span>
-                      <div className="flex shrink-0 flex-col gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setBewerkt(etappe.id)}
-                          className="rounded px-1.5 py-0.5 text-xs text-slate hover:bg-canvas hover:text-ink"
-                          aria-label={`Etappe ${etappe.plaats} bewerken`}
-                        >
-                          Bewerk
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void metFout(async () => {
-                              await api.etappes.verwijder(etappe.id);
-                              setEtappes((etappes ?? []).filter((e) => e.id !== etappe.id));
-                              if (etappe.overnachting) await herlaadRoute();
-                            })
-                          }
-                          className="rounded px-1.5 py-0.5 text-xs text-slate hover:bg-alert/8 hover:text-alert"
-                          aria-label={`Etappe ${etappe.plaats} verwijderen`}
-                        >
-                          Weg
-                        </button>
-                      </div>
-                      {/* Verplaatsen met het toetsenbord, voor wie niet sleept. */}
-                      <div className="flex shrink-0 flex-col gap-0.5">
-                        <button
-                          type="button"
-                          disabled={index === 0}
-                          onClick={() => void verplaats(etappe.id, etappes[index - 1]!.id)}
-                          aria-label={`${etappe.plaats} naar boven`}
-                          className="rounded px-1.5 text-slate hover:bg-canvas hover:text-ink disabled:opacity-25"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          disabled={index === etappes.length - 1}
-                          onClick={() => void verplaats(etappe.id, etappes[index + 1]!.id)}
-                          aria-label={`${etappe.plaats} naar beneden`}
-                          className="rounded px-1.5 text-slate hover:bg-canvas hover:text-ink disabled:opacity-25"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ol>
-          )}
-
-          <div className="border-t border-slate/12 p-4">
-            <EtappeFormulier
-              bezig={bezig}
-              bevestigLabel="Etappe toevoegen"
-              leegNa
-              onBevestig={(velden) =>
-                void metFout(async () => {
-                  const nieuw = await api.etappes.voegToe(trip.id, velden);
-                  setEtappes([...(etappes ?? []), nieuw]);
-                  if (nieuw.overnachting) await herlaadRoute();
-                })
-              }
-            />
-          </div>
-        </Kaart>
+        {/* Bestemmingen: dezelfde lijst als bij de reisinstellingen, hier ook
+            te beheren — precies waar je onderweg een extra stop bedenkt. */}
+        <Bestemmingen tripId={trip.id} onGewijzigd={() => void herlaadNaWijziging()} />
 
         <div className="space-y-4">
-          {/* Verplicht in de auto, per land dat je doorkruist. */}
-          <Kaart>
-            <KaartKop>Verplicht in de auto — {trip.land}</KaartKop>
-            <ul className="space-y-1.5">
-              {verplichtInDeAuto(trip.land).map((ding) => (
-                <li key={ding} className="flex items-start gap-2 text-sm text-ink">
-                  <span
-                    aria-hidden="true"
-                    className="mt-1.5 size-1.5 shrink-0 rounded-full bg-forest"
-                  />
-                  {ding}
-                </li>
+          {/* Verplicht in de auto, per land dat de reis doorkruist. */}
+          {landen.length > 0 && (
+            <Kaart className="space-y-3">
+              <KaartKop>Verplicht in de auto</KaartKop>
+              {landen.map((land) => (
+                <div key={land}>
+                  {landen.length > 1 && (
+                    <p className="label-mono mb-1.5 text-slate">{land}</p>
+                  )}
+                  <ul className="space-y-1.5">
+                    {verplichtInDeAuto(land).map((ding) => (
+                      <li key={ding} className="flex items-start gap-2 text-sm text-ink">
+                        <span
+                          aria-hidden="true"
+                          className="mt-1.5 size-1.5 shrink-0 rounded-full bg-forest"
+                        />
+                        {ding}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
-          </Kaart>
+            </Kaart>
+          )}
 
           {/* Noodnummers als grote knoppen met tel:-link. */}
           <Kaart>
@@ -489,9 +324,9 @@ function RouteEtappes({ route }: { route: RouteAntwoord | null }) {
       <KaartKop
         extra={
           <span className="text-xs text-slate">
-            {route.overnachtingen === 0
+            {!route.onderweg
               ? "in één keer"
-              : `via ${route.overnachtingen} ${route.overnachtingen === 1 ? "overnachting" : "overnachtingen"}`}
+              : `via ${route.onderweg} ${route.onderweg === 1 ? "tussenstop" : "tussenstops"}`}
           </span>
         }
       >
@@ -516,158 +351,5 @@ function RouteEtappes({ route }: { route: RouteAntwoord | null }) {
         ))}
       </ol>
     </Kaart>
-  );
-}
-
-/**
- * Formulier voor één etappe, gebruikt voor toevoegen én bewerken. Zetten je de
- * schakelaar op overnachting, dan komen het adres en het aantal nachten erbij.
- */
-function EtappeFormulier({
-  begin,
-  bezig,
-  bevestigLabel,
-  leegNa = false,
-  onBevestig,
-  onAnnuleer,
-}: {
-  begin?: Stop;
-  bezig: boolean;
-  bevestigLabel: string;
-  /** Maak de velden leeg na opslaan; voor het toevoegformulier. */
-  leegNa?: boolean;
-  onBevestig: (velden: NieuweStop) => void;
-  onAnnuleer?: () => void;
-}) {
-  const [plaats, setPlaats] = useState(begin?.plaats ?? "");
-  const [tijd, setTijd] = useState(begin?.tijd ?? "");
-  const [opmerking, setOpmerking] = useState(begin?.opmerking ?? "");
-  const [overnachting, setOvernachting] = useState(begin?.overnachting ?? false);
-  const [adres, setAdres] = useState(begin?.adres ?? "");
-  const [nachten, setNachten] = useState(String(begin?.nachten ?? 1));
-  // Alleen gevuld na een verse keuze uit de autocomplete in deze sessie —
-  // anders blijven bestaande coördinaten gewoon staan (regelt de api zelf).
-  const [coordVers, setCoordVers] = useState<{ lat: number; lon: number } | null>(null);
-  const adresGeverifieerd =
-    coordVers !== null || (adres === (begin?.adres ?? "") && (begin?.adresGeverifieerd ?? false));
-
-  return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-[1fr_auto] gap-2">
-        <Veld label="Plaats" verplicht ingevuld={plaats.trim() !== ""}>
-          <input
-            className={INVOER_STIJL}
-            placeholder="Metz"
-            value={plaats}
-            onChange={(event) => setPlaats(event.target.value)}
-          />
-        </Veld>
-        <Veld label={overnachting ? "Aankomst" : "Tijd"}>
-          <input
-            type="time"
-            className={INVOER_STIJL}
-            value={tijd}
-            onChange={(event) => setTijd(event.target.value)}
-          />
-        </Veld>
-      </div>
-
-      {/* Schakelaar: tussenstop of overnachting. */}
-      <button
-        type="button"
-        onClick={() => setOvernachting(!overnachting)}
-        aria-pressed={overnachting}
-        className="flex w-full items-center gap-3 rounded-xl border border-slate/25 bg-white px-3 py-2.5 text-left transition-colors hover:border-slate/50"
-      >
-        <span
-          aria-hidden="true"
-          className={`flex size-5 shrink-0 items-center justify-center rounded-md border-2 text-xs font-bold ${
-            overnachting ? "border-forest bg-forest text-white" : "border-slate/35 text-transparent"
-          }`}
-        >
-          ✓
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-ink">Hier overnachten</span>
-          <span className="block text-xs text-slate">
-            Een overnachting telt mee in de route naar de eindbestemming.
-          </span>
-        </span>
-      </button>
-
-      {overnachting && (
-        <div className="grid grid-cols-[1fr_auto] gap-2">
-          <AdresVeld
-            label="Adres"
-            hint="Kies een suggestie voor de route en de kaart."
-            placeholder="Camping de l'Ile, Rue X 12"
-            waarde={adres}
-            geverifieerd={adresGeverifieerd}
-            onWijzig={(tekst) => {
-              setAdres(tekst);
-              setCoordVers(null);
-            }}
-            onKies={(suggestie) => {
-              setAdres(suggestie.label);
-              setCoordVers({ lat: suggestie.lat, lon: suggestie.lon });
-            }}
-          />
-          <Veld label="Nachten">
-            <input
-              className={`${INVOER_STIJL} w-20`}
-              inputMode="numeric"
-              value={nachten}
-              onChange={(event) =>
-                setNachten(event.target.value.replace(/\D/g, "").slice(0, 2))
-              }
-            />
-          </Veld>
-        </div>
-      )}
-
-      <Veld label="Opmerking">
-        <input
-          className={INVOER_STIJL}
-          placeholder={overnachting ? "Sleutel ophalen bij de receptie" : "Tanken en lunch"}
-          value={opmerking}
-          onChange={(event) => setOpmerking(event.target.value)}
-        />
-      </Veld>
-
-      <div className="flex gap-2">
-        <Knop
-          soort="primair"
-          disabled={bezig || plaats.trim() === ""}
-          onClick={() => {
-            onBevestig({
-              plaats: plaats.trim(),
-              tijd: tijd === "" ? null : tijd,
-              opmerking: opmerking.trim() === "" ? null : opmerking.trim(),
-              overnachting,
-              adres: overnachting && adres.trim() !== "" ? adres.trim() : null,
-              nachten: overnachting ? Math.max(1, Number(nachten) || 1) : null,
-              lat: overnachting ? coordVers?.lat : undefined,
-              lon: overnachting ? coordVers?.lon : undefined,
-            });
-            if (leegNa) {
-              setPlaats("");
-              setTijd("");
-              setOpmerking("");
-              setOvernachting(false);
-              setAdres("");
-              setNachten("1");
-              setCoordVers(null);
-            }
-          }}
-        >
-          {bevestigLabel}
-        </Knop>
-        {onAnnuleer !== undefined && (
-          <Knop soort="stil" onClick={onAnnuleer}>
-            Terug
-          </Knop>
-        )}
-      </div>
-    </div>
   );
 }

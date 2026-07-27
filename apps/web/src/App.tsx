@@ -128,7 +128,7 @@ export function App() {
           >
             {reizen.map((reis) => (
               <option key={reis.id} value={reis.id}>
-                {reis.naam} — {reis.bestemming}
+                {reis.naam}
               </option>
             ))}
           </select>

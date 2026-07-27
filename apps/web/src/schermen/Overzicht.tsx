@@ -5,6 +5,7 @@ import {
   REDEN_KORT,
   REDEN_TEKST,
   api,
+  type Destination,
   type Overzicht as OverzichtGegevens,
   type RouteAntwoord,
   type TripMetReizigers,
@@ -29,6 +30,7 @@ export function Overzicht({
   gaNaar: (tab: Tab) => void;
 }) {
   const [gegevens, setGegevens] = useState<OverzichtGegevens | null>(null);
+  const [bestemmingen, setBestemmingen] = useState<Destination[] | null>(null);
   const [weer, setWeer] = useState<WeerAntwoord | null>(null);
   const [route, setRoute] = useState<RouteAntwoord | null>(null);
   const [fout, setFout] = useState<string | null>(null);
@@ -36,10 +38,12 @@ export function Overzicht({
   useEffect(() => {
     let actueel = true;
     setGegevens(null);
-    api.trips
-      .overzicht(trip.id)
-      .then((resultaat) => {
-        if (actueel) setGegevens(resultaat);
+    setBestemmingen(null);
+    Promise.all([api.trips.overzicht(trip.id), api.destinations.lijst(trip.id)])
+      .then(([overzicht, destinations]) => {
+        if (!actueel) return;
+        setGegevens(overzicht);
+        setBestemmingen(destinations);
       })
       .catch((error: Error) => {
         if (actueel) setFout(error.message);
@@ -67,11 +71,18 @@ export function Overzicht({
   }, [trip.id]);
 
   if (fout !== null) return <Melding tekst={fout} />;
-  if (gegevens === null) return <Laden />;
+  if (gegevens === null || bestemmingen === null) return <Laden />;
 
   const { documenten, inpaklijsten } = gegevens;
   const dagen = dagenTot(trip.vertrekdatum);
   const vertrekVan = trip.thuisplaats ?? "thuis";
+  // De laatste in de volgorde is de eindbestemming van de reis.
+  const eindbestemming = bestemmingen.at(-1) ?? null;
+  const landen = [
+    ...new Set(
+      bestemmingen.map((b) => b.land).filter((land): land is string => land !== null),
+    ),
+  ];
 
   // De route is nauwkeuriger dan wat je zelf invulde; die krijgt voorrang.
   const totaalAfstand = route?.route?.totaalAfstandKm ?? trip.afstandKm;
@@ -89,7 +100,9 @@ export function Overzicht({
                 →
               </span>
               <span className="font-display text-lg font-extrabold lg:text-2xl">
-                {trip.bestemming}
+                {eindbestemming === null
+                  ? "nog geen bestemming"
+                  : (eindbestemming.naam ?? eindbestemming.plaats)}
               </span>
             </div>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -119,20 +132,23 @@ export function Overzicht({
         <div className="space-y-4">
           <Kaart className="border-forest/25 bg-forest/5">
             <KaartKop>Kampeerplek</KaartKop>
-            {trip.campingNaam === null ? (
-              <p className="text-sm text-slate">Nog geen camping ingevuld.</p>
+            {eindbestemming === null ? (
+              <p className="text-sm text-slate">Nog geen bestemming ingevuld.</p>
             ) : (
               <>
                 <p className="font-display text-xl font-extrabold text-forest">
-                  {trip.campingNaam}
+                  {eindbestemming.naam ?? eindbestemming.plaats}
                 </p>
                 <dl className="mt-3 grid grid-cols-3 gap-3">
-                  <Gegeven label="regio" waarde={trip.regio ?? trip.land} />
-                  <Gegeven label="plaats" waarde={trip.plaatsnummer ?? "—"} />
-                  <Gegeven label="nachten" waarde={String(trip.nachten)} />
+                  <Gegeven label="regio" waarde={eindbestemming.regio ?? eindbestemming.land ?? "—"} />
+                  <Gegeven label="plaats" waarde={eindbestemming.plaatsnummer ?? "—"} />
+                  <Gegeven
+                    label="nachten"
+                    waarde={eindbestemming.nachten === null ? "—" : String(eindbestemming.nachten)}
+                  />
                 </dl>
-                {trip.plaatsInfo !== null && (
-                  <p className="mt-3 text-sm text-slate">{trip.plaatsInfo}</p>
+                {eindbestemming.opmerking !== null && (
+                  <p className="mt-3 text-sm text-slate">{eindbestemming.opmerking}</p>
                 )}
               </>
             )}
@@ -182,7 +198,13 @@ export function Overzicht({
               <li>
                 <StatusRegel
                   label="Reisadvies"
-                  waarde={`${verplichtInDeAuto(trip.land).length} dingen verplicht in ${trip.land}`}
+                  waarde={
+                    landen.length === 0
+                      ? "vul een land in bij je bestemmingen"
+                      : landen.length === 1
+                        ? `${verplichtInDeAuto(landen[0]!).length} dingen verplicht in ${landen[0]}`
+                        : `verplichte spullen voor ${landen.length} landen`
+                  }
                   kleur="navy"
                   onClick={() => gaNaar("onderweg")}
                 />
@@ -369,9 +391,9 @@ function RouteKaart({
       <KaartKop
         extra={
           <span className="text-xs text-slate">
-            {route.overnachtingen === 0
+            {!route.onderweg
               ? "in één keer"
-              : `${route.overnachtingen} keer overnachten`}
+              : `via ${route.onderweg} ${route.onderweg === 1 ? "tussenstop" : "tussenstops"}`}
           </span>
         }
       >
