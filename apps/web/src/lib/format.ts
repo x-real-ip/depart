@@ -83,3 +83,87 @@ export function verplichtInDeAuto(land: string): string[] {
 export const BEKENDE_LANDEN = Object.keys(VERPLICHT_PER_LAND).sort((a, b) =>
   a.localeCompare(b, "nl"),
 );
+
+/** Eén officieel noodnummer, zoals de politie of ambulance van een land. */
+export interface OfficieelNoodnummer {
+  label: string;
+  nummer: string;
+}
+
+/**
+ * Officiële noodnummers per land. 112 werkt in de hele EU en ook in
+ * Zwitserland, maar de nationale nummers voor politie, brandweer en
+ * ambulance lopen uiteen — die staan er apart bij waar bekend.
+ */
+const NOODNUMMERS_PER_LAND: Record<string, OfficieelNoodnummer[]> = {
+  Nederland: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie (geen spoed)", nummer: "0900-8844" },
+  ],
+  België: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie", nummer: "101" },
+  ],
+  Duitsland: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie", nummer: "110" },
+  ],
+  Frankrijk: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie", nummer: "17" },
+    { label: "Brandweer", nummer: "18" },
+    { label: "Ambulance (SAMU)", nummer: "15" },
+  ],
+  Luxemburg: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie", nummer: "113" },
+  ],
+  Zwitserland: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie", nummer: "117" },
+    { label: "Brandweer", nummer: "118" },
+    { label: "Ambulance", nummer: "144" },
+  ],
+  Oostenrijk: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie", nummer: "133" },
+    { label: "Brandweer", nummer: "122" },
+    { label: "Ambulance", nummer: "144" },
+  ],
+  Italië: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Brandweer", nummer: "115" },
+    { label: "Ambulance", nummer: "118" },
+  ],
+  Spanje: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie Nacional", nummer: "091" },
+    { label: "Guardia Civil", nummer: "062" },
+  ],
+  Denemarken: [{ label: "Algemeen alarmnummer", nummer: "112" }],
+  Tsjechië: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie", nummer: "158" },
+    { label: "Brandweer", nummer: "150" },
+    { label: "Ambulance", nummer: "155" },
+  ],
+  Slovenië: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie", nummer: "113" },
+  ],
+  Kroatië: [
+    { label: "Algemeen alarmnummer", nummer: "112" },
+    { label: "Politie", nummer: "192" },
+    { label: "Brandweer", nummer: "193" },
+    { label: "Ambulance", nummer: "194" },
+  ],
+};
+
+/** Onbekende landen krijgen alleen het Europese algemene alarmnummer. */
+const NOODNUMMERS_STANDAARD: OfficieelNoodnummer[] = [
+  { label: "Algemeen alarmnummer (EU)", nummer: "112" },
+];
+
+export function officieleNoodnummers(land: string): OfficieelNoodnummer[] {
+  return NOODNUMMERS_PER_LAND[land] ?? NOODNUMMERS_STANDAARD;
+}

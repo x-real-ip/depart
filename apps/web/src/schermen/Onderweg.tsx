@@ -19,7 +19,7 @@ import {
   type RouteAntwoord,
   type Trip,
 } from "../lib/api.ts";
-import { afstand, bedrag, rijtijd, verplichtInDeAuto } from "../lib/format.ts";
+import { afstand, bedrag, officieleNoodnummers, rijtijd, verplichtInDeAuto } from "../lib/format.ts";
 
 export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzigd: () => void }) {
   const [bestemmingen, setBestemmingen] = useState<Destination[] | null>(null);
@@ -206,6 +206,40 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
           {/* Noodnummers als grote knoppen met tel:-link. */}
           <Kaart>
             <KaartKop>Noodnummers</KaartKop>
+
+            {/* Officiële nummers van het land van bestemming — je hoeft ze
+                niet zelf op te zoeken en in te typen. */}
+            {landen.length > 0 && (
+              <div className="mb-4 space-y-3 border-b border-slate/12 pb-4">
+                <p className="label-mono text-slate">Officieel</p>
+                {landen.map((land) => (
+                  <div key={land}>
+                    {landen.length > 1 && (
+                      <p className="mb-1.5 text-xs font-semibold text-ink">{land}</p>
+                    )}
+                    <ul className="grid grid-cols-2 gap-2">
+                      {officieleNoodnummers(land).map((nummer) => (
+                        <li key={nummer.label}>
+                          <a
+                            href={`tel:${nummer.nummer.replace(/[ ()-]/g, "")}`}
+                            className="flex items-center justify-between gap-2 rounded-xl border border-navy/20 bg-white px-3 py-2.5 text-navy transition-colors hover:bg-navy/5"
+                          >
+                            <span className="min-w-0 truncate text-xs font-semibold">
+                              {nummer.label}
+                            </span>
+                            <span className="label-mono shrink-0 text-sm font-semibold">
+                              {nummer.nummer}
+                            </span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {landen.length > 0 && <p className="label-mono mb-2 text-slate">Eigen contacten</p>}
             {nummers.length === 0 ? (
               <LegeStaat
                 titel="Nog geen noodnummers"

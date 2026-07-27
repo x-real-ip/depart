@@ -127,7 +127,17 @@ export function Overzicht({
         </div>
       </header>
 
-      {/* Op desktop naast elkaar: links de plek en het weer, rechts de status. */}
+      {/* Vertrekstatus: het eerste wat je ziet, boven het weer — dit is de
+          vraag waar het hele scherm om draait. */}
+      <VertrekstatusKaart
+        documenten={documenten}
+        inpaklijsten={inpaklijsten}
+        eindbestemming={eindbestemming}
+        landen={landen}
+        gaNaar={gaNaar}
+      />
+
+      {/* Op desktop naast elkaar: links de plek en het weer, rechts de route. */}
       <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
         <div className="space-y-4">
           <Kaart className="border-forest/25 bg-forest/5">
@@ -158,64 +168,137 @@ export function Overzicht({
         </div>
 
         <div className="space-y-4">
-          {/* Het statusblok: drie regels, elk een knop naar het tabblad. */}
-          <Kaart className="p-0">
-            <h2 className="label-mono px-4 pt-4 pb-1 text-slate">
-              Ben ik klaar om te vertrekken?
-            </h2>
-            <ul className="divide-y divide-slate/12">
-              <li>
-                <StatusRegel
-                  label="Documenten"
-                  waarde={
-                    documenten.totaal === 0
-                      ? "nog niets toegevoegd"
-                      : documenten.ontbreekt > 0
-                        ? `${documenten.ontbreekt} van ${documenten.totaal} ontbreekt`
-                        : documenten.letOp > 0
-                          ? `${documenten.letOp} verlopen bijna`
-                          : "alles op orde"
-                  }
-                  kleur={
-                    documenten.ontbreekt > 0 ? "alert" : documenten.letOp > 0 ? "amber" : "forest"
-                  }
-                  onClick={() => gaNaar("documenten")}
-                />
-              </li>
-              <li>
-                <StatusRegel
-                  label="Inpaklijsten"
-                  waarde={
-                    inpaklijsten.lijsten === 0
-                      ? "nog geen lijst"
-                      : `${inpaklijsten.afgevinkt} van ${inpaklijsten.totaal} klaar, ${inpaklijsten.lijsten} ${inpaklijsten.lijsten === 1 ? "lijst" : "lijsten"}`
-                  }
-                  percentage={inpaklijsten.lijsten === 0 ? undefined : inpaklijsten.percentage}
-                  kleur={inpaklijsten.percentage === 100 ? "forest" : "amber"}
-                  onClick={() => gaNaar("inpaklijst")}
-                />
-              </li>
-              <li>
-                <StatusRegel
-                  label="Reisadvies"
-                  waarde={
-                    landen.length === 0
-                      ? "vul een land in bij je bestemmingen"
-                      : landen.length === 1
-                        ? `${verplichtInDeAuto(landen[0]!).length} dingen verplicht in ${landen[0]}`
-                        : `verplichte spullen voor ${landen.length} landen`
-                  }
-                  kleur="navy"
-                  onClick={() => gaNaar("onderweg")}
-                />
-              </li>
-            </ul>
-          </Kaart>
-
           <RouteKaart route={route} onNaarOnderweg={() => gaNaar("onderweg")} />
         </div>
       </div>
     </div>
+  );
+}
+
+/** Eén item op de vertrek-checklist: is het klaar, en zo niet, hoe erg is dat. */
+interface ChecklistItem {
+  label: string;
+  waarde: string;
+  klaar: boolean;
+  kritiek: boolean;
+  percentage?: number;
+  onClick: () => void;
+}
+
+const STATUS_STIJL = {
+  klaar: {
+    icoon: "✅",
+    tekst: "Klaar om te vertrekken",
+    kaart: "border-forest/30 bg-forest/5",
+    kop: "text-forest",
+  },
+  waarschuwing: {
+    icoon: "⚠️",
+    tekst: "Nog enkele taken open",
+    kaart: "border-amber/40 bg-amber/10",
+    kop: "text-ink",
+  },
+  kritiek: {
+    icoon: "❌",
+    tekst: "Niet klaar om te vertrekken",
+    kaart: "border-alert/40 bg-alert/8",
+    kop: "text-alert",
+  },
+} as const;
+
+/**
+ * De belangrijkste vraag van de app, in het groot: kan ik nu vertrekken?
+ * Eén duidelijke status bovenaan, met eronder precies welke taken dat nog
+ * in de weg staan — zodat je niet per tabblad hoeft te gaan kijken.
+ */
+function VertrekstatusKaart({
+  documenten,
+  inpaklijsten,
+  eindbestemming,
+  landen,
+  gaNaar,
+}: {
+  documenten: OverzichtGegevens["documenten"];
+  inpaklijsten: OverzichtGegevens["inpaklijsten"];
+  eindbestemming: Destination | null;
+  landen: string[];
+  gaNaar: (tab: Tab) => void;
+}) {
+  const items: ChecklistItem[] = [
+    {
+      label: "Bestemming",
+      waarde:
+        eindbestemming === null
+          ? "nog geen bestemming ingevuld"
+          : landen.length === 0
+            ? "vul een land in bij je bestemmingen"
+            : landen.length === 1
+              ? `${verplichtInDeAuto(landen[0]!).length} dingen verplicht in ${landen[0]}`
+              : `verplichte spullen voor ${landen.length} landen`,
+      klaar: eindbestemming !== null && landen.length > 0,
+      kritiek: eindbestemming === null,
+      onClick: () => gaNaar(eindbestemming === null ? "instellingen" : "onderweg"),
+    },
+    {
+      label: "Documenten",
+      waarde:
+        documenten.totaal === 0
+          ? "nog niets toegevoegd"
+          : documenten.ontbreekt > 0
+            ? `${documenten.ontbreekt} van ${documenten.totaal} ontbreekt`
+            : documenten.letOp > 0
+              ? `${documenten.letOp} verlopen bijna`
+              : "alles op orde",
+      klaar: documenten.ontbreekt === 0 && documenten.letOp === 0,
+      kritiek: documenten.ontbreekt > 0,
+      onClick: () => gaNaar("documenten"),
+    },
+    {
+      label: "Inpaklijsten",
+      waarde:
+        inpaklijsten.lijsten === 0
+          ? "nog geen lijst"
+          : `${inpaklijsten.afgevinkt} van ${inpaklijsten.totaal} klaar, ${inpaklijsten.lijsten} ${inpaklijsten.lijsten === 1 ? "lijst" : "lijsten"}`,
+      klaar: inpaklijsten.lijsten > 0 && inpaklijsten.percentage === 100,
+      kritiek: false,
+      percentage: inpaklijsten.lijsten === 0 ? undefined : inpaklijsten.percentage,
+      onClick: () => gaNaar("inpaklijst"),
+    },
+  ];
+
+  const open = items.filter((item) => !item.klaar);
+  const status = open.length === 0 ? "klaar" : open.some((item) => item.kritiek) ? "kritiek" : "waarschuwing";
+  const stijl = STATUS_STIJL[status];
+
+  return (
+    <Kaart className={`p-0 ${stijl.kaart}`}>
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+        <span aria-hidden="true" className="text-3xl leading-none">
+          {stijl.icoon}
+        </span>
+        <div className="min-w-0">
+          <h2 className={`font-display text-lg font-extrabold ${stijl.kop}`}>{stijl.tekst}</h2>
+          <p className="text-xs text-slate">
+            {open.length === 0
+              ? "Alle taken zijn afgerond."
+              : `${open.length} van ${items.length} ${open.length === 1 ? "taak staat" : "taken staan"} nog open: ${open.map((item) => item.label).join(", ")}.`}
+          </p>
+        </div>
+      </div>
+      <ul className="divide-y divide-slate/12 border-t border-slate/12">
+        {items.map((item) => (
+          <li key={item.label}>
+            <StatusRegel
+              label={item.label}
+              waarde={item.waarde}
+              percentage={item.percentage}
+              kleur={item.kritiek ? "alert" : item.klaar ? "forest" : "amber"}
+              onClick={item.onClick}
+            />
+          </li>
+        ))}
+      </ul>
+    </Kaart>
   );
 }
 
