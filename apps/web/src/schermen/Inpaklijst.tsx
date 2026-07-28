@@ -29,6 +29,9 @@ export function Inpaklijst({
   const [fout, setFout] = useState<string | null>(null);
   const [actieveLijstId, setActieveLijstId] = useState<string | null>(null);
   const [nieuwLabel, setNieuwLabel] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importTekst, setImportTekst] = useState("");
+  const [importMelding, setImportMelding] = useState<string | null>(null);
   const [herschrijft, setHerschrijft] = useState<string | null>(null);
   const [herschrevenLabel, setHerschrevenLabel] = useState("");
   const [vraagWissen, setVraagWissen] = useState(false);
@@ -110,6 +113,21 @@ export function Inpaklijst({
     });
   }
 
+  async function importeer(): Promise<void> {
+    if (importTekst.trim() === "" || actieveLijstId === null) return;
+    await metFout(async () => {
+      const resultaat = await api.inpaklijsten.importeer(actieveLijstId, importTekst);
+      setItems([...(items ?? []), ...resultaat.items]);
+      setImportMelding(
+        resultaat.overgeslagen === 0
+          ? `${resultaat.toegevoegd} ${resultaat.toegevoegd === 1 ? "item" : "items"} toegevoegd.`
+          : `${resultaat.toegevoegd} toegevoegd, ${resultaat.overgeslagen} stonden er al op.`,
+      );
+      setImportTekst("");
+      setImportOpen(false);
+    });
+  }
+
   async function maakLijst(): Promise<void> {
     if (nieuweLijstNaam.trim() === "") return;
     await metFout(async () => {
@@ -141,7 +159,10 @@ export function Inpaklijst({
             <LijstKnop
               key={lijst.id}
               actief={actieveLijstId === lijst.id}
-              onClick={() => setActieveLijstId(lijst.id)}
+              onClick={() => {
+                setActieveLijstId(lijst.id);
+                setImportMelding(null);
+              }}
               label={lijst.naam}
             />
           ))}
@@ -440,6 +461,56 @@ export function Inpaklijst({
                 </Knop>
               </div>
             </Kaart>
+
+            {/* Een bestaande lijst importeren: plak 'm, één item per regel. */}
+            {importMelding !== null && !importOpen && (
+              <p className="px-1 text-xs text-slate">{importMelding}</p>
+            )}
+            {importOpen ? (
+              <Kaart className="space-y-2">
+                <Veld
+                  label="Plak een bestaande lijst"
+                  hint="Eén item per regel. Opsommingstekens en nummering herkent de app vanzelf."
+                >
+                  <textarea
+                    className={`${INVOER_STIJL} min-h-32 resize-y`}
+                    placeholder={"Tent\nSlaapzak\nKookset"}
+                    value={importTekst}
+                    autoFocus
+                    onChange={(event) => setImportTekst(event.target.value)}
+                  />
+                </Veld>
+                <div className="flex gap-2">
+                  <Knop
+                    soort="primair"
+                    disabled={bezig || importTekst.trim() === ""}
+                    onClick={importeer}
+                  >
+                    Importeer
+                  </Knop>
+                  <Knop
+                    soort="stil"
+                    onClick={() => {
+                      setImportOpen(false);
+                      setImportTekst("");
+                    }}
+                  >
+                    Terug
+                  </Knop>
+                </div>
+              </Kaart>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setImportOpen(true);
+                  setImportMelding(null);
+                }}
+                className="px-1 text-left text-xs font-semibold text-slate underline decoration-slate/40 underline-offset-2 hover:text-ink"
+              >
+                Importeer een bestaande lijst
+              </button>
+            )}
 
             <div className="flex flex-col gap-2">
               {vraagWissen ? (

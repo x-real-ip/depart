@@ -441,6 +441,13 @@ export const api = {
       }>,
     wisVinkjes: (id: string) =>
       verzoek("POST", `/api/pack-lists/${id}/wis-vinkjes`, {}) as Promise<{ gewist: number }>,
+    /** Plak een bestaande lijst (één item per regel) om 'm in te importeren. */
+    importeer: (id: string, tekst: string) =>
+      verzoek("POST", `/api/pack-lists/${id}/importeer`, { tekst }) as Promise<{
+        toegevoegd: number;
+        overgeslagen: number;
+        items: PackItem[];
+      }>,
   },
 
   inpaklijstItems: {
