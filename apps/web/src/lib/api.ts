@@ -328,6 +328,20 @@ export interface Voortgang {
   percentage: number;
 }
 
+/** Een gerecht voor op de camping: een naam en, via RecipeIngredient, ingrediënten. */
+export interface Recipe {
+  id: string;
+  tripId: string;
+  naam: string;
+}
+
+export interface RecipeIngredient {
+  id: string;
+  recipeId: string;
+  label: string;
+  volgorde: number;
+}
+
 export interface Overzicht {
   trip: Trip;
   documenten: { totaal: number; ontbreekt: number; letOp: number; geldig: number };
@@ -522,5 +536,34 @@ export const api = {
     werkBij: (id: string, velden: { label?: string; afgevinkt?: boolean }) =>
       verzoek("PATCH", `/api/requirements/${id}`, velden) as Promise<Requirement>,
     verwijder: (id: string) => verzoek("DELETE", `/api/requirements/${id}`) as Promise<null>,
+  },
+
+  /** Gerechten voor op de camping: een naam en ingrediënten die je naar een inpaklijst kunt sturen. */
+  gerechten: {
+    lijst: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/recipes`) as Promise<Recipe[]>,
+    maak: (tripId: string, naam: string) =>
+      verzoek("POST", `/api/trips/${tripId}/recipes`, { naam }) as Promise<Recipe>,
+    werkBij: (id: string, velden: { naam?: string }) =>
+      verzoek("PATCH", `/api/recipes/${id}`, velden) as Promise<Recipe>,
+    verwijder: (id: string) => verzoek("DELETE", `/api/recipes/${id}`) as Promise<null>,
+    naarInpaklijst: (id: string, packListId: string) =>
+      verzoek("POST", `/api/recipes/${id}/naar-inpaklijst`, { packListId }) as Promise<{
+        toegevoegd: number;
+        overgeslagen: number;
+        items: PackItem[];
+      }>,
+  },
+
+  ingredienten: {
+    lijst: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/recipe-ingredients`) as Promise<RecipeIngredient[]>,
+    voegToe: (recipeId: string, label: string) =>
+      verzoek("POST", `/api/recipes/${recipeId}/recipe-ingredients`, {
+        label,
+      }) as Promise<RecipeIngredient>,
+    werkBij: (id: string, velden: { label?: string }) =>
+      verzoek("PATCH", `/api/recipe-ingredients/${id}`, velden) as Promise<RecipeIngredient>,
+    verwijder: (id: string) => verzoek("DELETE", `/api/recipe-ingredients/${id}`) as Promise<null>,
   },
 };

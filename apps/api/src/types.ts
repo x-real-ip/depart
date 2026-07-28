@@ -100,6 +100,20 @@ export interface RequirementRow {
   volgorde: number;
 }
 
+/** Een gerecht voor op de camping — een naam en, via recipe_ingredient, ingrediënten. */
+export interface RecipeRow {
+  id: string;
+  trip_id: string;
+  naam: string;
+}
+
+export interface RecipeIngredientRow {
+  id: string;
+  recipe_id: string;
+  label: string;
+  volgorde: number;
+}
+
 export const tripColumns = `
   id, naam, vertrekdatum, terugdatum, afstand_km, rijtijd_min, tol_kosten,
   thuisplaats, thuisland, thuisadres, thuis_lat, thuis_lon,
@@ -194,6 +208,23 @@ export function toRequirement(row: RequirementRow) {
     tripId: row.trip_id,
     label: row.label,
     afgevinkt: row.afgevinkt,
+    volgorde: row.volgorde,
+  };
+}
+
+export function toRecipe(row: RecipeRow) {
+  return {
+    id: row.id,
+    tripId: row.trip_id,
+    naam: row.naam,
+  };
+}
+
+export function toRecipeIngredient(row: RecipeIngredientRow) {
+  return {
+    id: row.id,
+    recipeId: row.recipe_id,
+    label: row.label,
     volgorde: row.volgorde,
   };
 }
