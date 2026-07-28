@@ -844,7 +844,10 @@ async function haalVerkeerVoorBbox(
       };
     })
     .filter((incident): incident is VerkeersIncident => incident !== null)
-    .filter((incident) => incident.ernst !== "onbekend" || BELANGRIJKE_CATEGORIE.has(incident.categorie));
+    .filter((incident) => incident.ernst !== "onbekend" || BELANGRIJKE_CATEGORIE.has(incident.categorie))
+    // Alleen hoofdwegen: een incident zonder wegnummer is zo goed als altijd
+    // een lokale straat, niet de route waar je overheen rijdt.
+    .filter((incident) => incident.weg !== null);
 
   // De grootste vertraging eerst, dan pas afkappen — zo blijft van dit stuk
   // van de route het meest relevante over.
