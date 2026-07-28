@@ -810,8 +810,8 @@ async function haalVerkeerVoorBbox(
   const bewaard = uitCache<VerkeersIncident[]>(sleutel);
   if (bewaard !== undefined) return bewaard;
 
-  const url = new URL(config.traffic.tomtomUrl);
-  url.searchParams.set("key", config.traffic.tomtomApiKey);
+  const url = new URL(config.tomtom.incidentsUrl);
+  url.searchParams.set("key", config.tomtom.apiKey);
   url.searchParams.set("bbox", `${bbox.minLon},${bbox.minLat},${bbox.maxLon},${bbox.maxLat}`);
   url.searchParams.set(
     "fields",
@@ -875,7 +875,7 @@ export async function haalVerkeer(
   ttlMinuten: number,
 ): Promise<VerkeersIncident[] | null> {
   if (!config.extern.enabled) return null;
-  if (config.traffic.tomtomApiKey === "") return null;
+  if (config.tomtom.apiKey === "") return null;
 
   const chunks = verkeerChunks(geometrie);
   if (chunks.length === 0) return [];
@@ -959,6 +959,200 @@ export function verkeerCacheMinuten(vertrekdatum: string, terugdatum: string): n
   if (dagenTotVertrek <= 3) return 60;
   if (dagenTotVertrek <= 7) return 180;
   return 720;
+}
+
+// --- Tolkosten ---------------------------------------------------------------
+
+export interface TolOnderdeel {
+  land: string;
+  soort: "per-km" | "vignet";
+  /** Alleen gevuld bij soort "per-km". */
+  km: number | null;
+  bedragEUR: number;
+}
+
+export interface TolSchatting {
+  totaalEUR: number;
+  onderdelen: TolOnderdeel[];
+}
+
+/** ISO 3166-1 alpha-3 (wat TomTom teruggeeft) naar de landnaam zoals de app die verder gebruikt. */
+const LANDCODE_ALPHA3: Record<string, string> = {
+  NLD: "Nederland",
+  BEL: "België",
+  DEU: "Duitsland",
+  FRA: "Frankrijk",
+  LUX: "Luxemburg",
+  CHE: "Zwitserland",
+  AUT: "Oostenrijk",
+  ITA: "Italië",
+  ESP: "Spanje",
+  DNK: "Denemarken",
+  CZE: "Tsjechië",
+  SVN: "Slovenië",
+  HRV: "Kroatië",
+  GBR: "Verenigd Koninkrijk",
+  POL: "Polen",
+  PRT: "Portugal",
+};
+
+function landnaamVanAlpha3(code: string): string {
+  return LANDCODE_ALPHA3[code] ?? code;
+}
+
+/**
+ * Zeer grove schatting van tolkosten voor een personenauto, in euro per
+ * kilometer. TomTom vertelt ons alleen wélke stukken van de route tol zijn,
+ * niet wat ze kosten — het werkelijke bedrag hangt af van het type weg, de
+ * concessiehouder en het voertuig. Landen die hier niet in staan (maar wel
+ * een tolweg hebben) krijgen het EU-gemiddelde.
+ */
+const TOL_PER_KM_EUR: Record<string, number> = {
+  Frankrijk: 0.1,
+  Italië: 0.08,
+  Spanje: 0.09,
+  Kroatië: 0.06,
+  Polen: 0.05,
+  Portugal: 0.07,
+};
+const TOL_PER_KM_EUR_STANDAARD = 0.09;
+
+/**
+ * Vignetten zijn een vast bedrag per land, niet per kilometer — de
+ * goedkoopste optie die voor een korte kampeerreis volstaat (Zwitserland
+ * verkoopt alleen een jaarvignet, dus daar kan niet omheen).
+ */
+const VIGNET_EUR: Record<string, number> = {
+  Oostenrijk: 11.5, // 10-dagenvignet
+  Zwitserland: 43, // jaarvignet, enige optie
+  Slovenië: 16, // weekvignet
+  Tsjechië: 13, // 10-dagen e-vignet
+};
+const VIGNET_EUR_STANDAARD = 15;
+
+interface TomTomRouteSectie {
+  startPointIndex: number;
+  endPointIndex: number;
+  sectionType: string;
+  countryCode?: string;
+}
+
+interface TomTomCalculateRouteAntwoord {
+  routes?: {
+    legs?: { points?: { latitude: number; longitude: number }[] }[];
+    sections?: TomTomRouteSectie[];
+  }[];
+}
+
+/** Afstand in km tussen twee indices in de routegeometrie, langs de weg (niet hemelsbreed). */
+function sectieAfstandKm(
+  punten: { latitude: number; longitude: number }[],
+  start: number,
+  eind: number,
+): number {
+  let totaal = 0;
+  const laatste = Math.min(eind, punten.length - 1);
+  for (let i = Math.max(start, 0); i < laatste; i++) {
+    totaal += afstandTussen(
+      { lat: punten[i]!.latitude, lon: punten[i]!.longitude },
+      { lat: punten[i + 1]!.latitude, lon: punten[i + 1]!.longitude },
+    );
+  }
+  return totaal;
+}
+
+/** In welk land een punt op de route ligt, op basis van de COUNTRY-secties. */
+function landVoorIndex(countrySecties: TomTomRouteSectie[], index: number): string | null {
+  return (
+    countrySecties.find((sectie) => index >= sectie.startPointIndex && index < sectie.endPointIndex)
+      ?.countryCode ?? null
+  );
+}
+
+/**
+ * Schat de tolkosten van de route: welke stukken tolweg zijn (per land, met
+ * een gemiddeld tarief per kilometer) en welke landen een vignet vereisen
+ * (vast bedrag). Nadrukkelijk een schatting, geen prijsopgave — TomTom kent
+ * zelf geen bedragen, alleen wélke stukken tol zijn.
+ *
+ * Werkt niet zonder TomTom-sleutel, net als de verkeersinformatie.
+ */
+export async function haalTolSchatting(
+  punten: { naam: string; coordinaat: Coordinaat }[],
+): Promise<TolSchatting | null> {
+  if (!config.extern.enabled) return null;
+  if (config.tomtom.apiKey === "") return null;
+  if (punten.length < 2) return null;
+
+  const locaties = punten
+    .map((punt) => `${punt.coordinaat.lat.toFixed(5)},${punt.coordinaat.lon.toFixed(5)}`)
+    .join(":");
+  const sleutel = `tol:${locaties}`;
+  const bewaard = uitCache<TolSchatting>(sleutel);
+  if (bewaard !== undefined) return bewaard;
+
+  const url = new URL(`${config.tomtom.routingUrl.replace(/\/$/, "")}/${locaties}/json`);
+  url.searchParams.set("key", config.tomtom.apiKey);
+  url.searchParams.append("sectionType", "toll");
+  url.searchParams.append("sectionType", "tollVignette");
+  url.searchParams.append("sectionType", "country");
+
+  const antwoord = await haalJson<TomTomCalculateRouteAntwoord>(url.toString(), "tol");
+  if (!antwoord.ok) return null;
+
+  const route = antwoord.data.routes?.[0];
+  const sections = route?.sections;
+  // Meerdere bestemmingen leveren meerdere legs op; de sectie-indices tellen
+  // daar gewoon doorheen, dus de punten van alle legs gaan in één rij.
+  const alleRoutePunten = route?.legs?.flatMap((leg) => leg.points ?? []);
+  if (sections === undefined || alleRoutePunten === undefined || alleRoutePunten.length === 0) {
+    return null;
+  }
+
+  const countrySecties = sections.filter((sectie) => sectie.sectionType === "COUNTRY");
+  const onderdelenPerSleutel = new Map<string, TolOnderdeel>();
+
+  for (const sectie of sections) {
+    if (sectie.sectionType !== "TOLL_VIGNETTE" || sectie.countryCode === undefined) continue;
+    const land = landnaamVanAlpha3(sectie.countryCode);
+    const sleutelOnderdeel = `vignet:${land}`;
+    if (onderdelenPerSleutel.has(sleutelOnderdeel)) continue;
+    onderdelenPerSleutel.set(sleutelOnderdeel, {
+      land,
+      soort: "vignet",
+      km: null,
+      bedragEUR: VIGNET_EUR[land] ?? VIGNET_EUR_STANDAARD,
+    });
+  }
+
+  const kmPerLand = new Map<string, number>();
+  for (const sectie of sections) {
+    if (sectie.sectionType !== "TOLL") continue;
+    const landcode = landVoorIndex(countrySecties, sectie.startPointIndex);
+    if (landcode === null) continue;
+    const land = landnaamVanAlpha3(landcode);
+    const km = sectieAfstandKm(alleRoutePunten, sectie.startPointIndex, sectie.endPointIndex);
+    kmPerLand.set(land, (kmPerLand.get(land) ?? 0) + km);
+  }
+  for (const [land, km] of kmPerLand) {
+    const afgerondeKm = Math.round(km * 10) / 10;
+    const tarief = TOL_PER_KM_EUR[land] ?? TOL_PER_KM_EUR_STANDAARD;
+    onderdelenPerSleutel.set(`km:${land}`, {
+      land,
+      soort: "per-km",
+      km: afgerondeKm,
+      bedragEUR: Math.round(afgerondeKm * tarief * 100) / 100,
+    });
+  }
+
+  const onderdelen = [...onderdelenPerSleutel.values()].sort((a, b) => b.bedragEUR - a.bedragEUR);
+  const totaalEUR = Math.round(onderdelen.reduce((som, onderdeel) => som + onderdeel.bedragEUR, 0) * 100) / 100;
+
+  const resultaat: TolSchatting = { totaalEUR, onderdelen };
+  // Welke stukken van een route tolweg zijn verandert niet vaak — een hele
+  // dag cachen is hier geen probleem, anders dan bij actueel verkeer.
+  inCache(sleutel, resultaat, 24 * 60);
+  return resultaat;
 }
 
 // --- Datumhulp -------------------------------------------------------------

@@ -61,16 +61,20 @@ export const config = {
   },
 
   /**
-   * Actuele verkeersinformatie (files, ongelukken, wegwerkzaamheden) is,
-   * anders dan weer, route en bezienswaardigheden, niet als publieke dienst
-   * zonder sleutel te krijgen — dat blijven, voor de hele reis en niet
-   * alleen Nederland, alleen commerciële partijen. Zonder sleutel toont de
-   * app netjes "niet beschikbaar" in plaats van dat de functie ontbreekt.
+   * Actuele verkeersinformatie (files, ongelukken, wegwerkzaamheden) en de
+   * tolkosten-schatting zijn, anders dan weer, route en bezienswaardigheden,
+   * niet als publieke dienst zonder sleutel te krijgen — dat blijven, voor de
+   * hele reis en niet alleen Nederland, alleen commerciële partijen. Zonder
+   * sleutel tonen die schermdelen netjes "niet beschikbaar" in plaats van dat
+   * de functie ontbreekt. Beide diensten delen dezelfde TomTom-sleutel.
    */
-  traffic: {
-    tomtomApiKey: process.env.TOMTOM_API_KEY ?? "",
-    tomtomUrl:
-      process.env.TOMTOM_URL ?? "https://api.tomtom.com/traffic/services/5/incidentDetails",
+  tomtom: {
+    apiKey: process.env.TOMTOM_API_KEY ?? "",
+    incidentsUrl:
+      process.env.TOMTOM_INCIDENTS_URL ?? "https://api.tomtom.com/traffic/services/5/incidentDetails",
+    /** Voor de tolkosten-schatting: welke stukken van de route tolwegen zijn. */
+    routingUrl:
+      process.env.TOMTOM_ROUTING_URL ?? "https://api.tomtom.com/routing/1/calculateRoute",
   },
 } as const;
 

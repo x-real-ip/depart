@@ -20,6 +20,7 @@ import {
   type Destination,
   type Requirement,
   type RouteAntwoord,
+  type TolAntwoord,
   type Trip,
   type VerkeerAntwoord,
 } from "../lib/api.ts";
@@ -128,18 +129,34 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
     };
   }, [trip.id]);
 
+  const [tol, setTol] = useState<TolAntwoord | null>(null);
+
+  useEffect(() => {
+    let actueel = true;
+    setTol(null);
+    void api.reisinfo.tol(trip.id).then((antwoord) => {
+      if (actueel) setTol(antwoord);
+    });
+    return () => {
+      actueel = false;
+    };
+  }, [trip.id]);
+
   /**
    * Na een wijziging in de bestemmingenlijst (via het gedeelde component) de
    * route herberekenen én onze eigen kopie van de lijst verversen — die
    * gebruiken we hier alleen om de landen te bepalen voor "Verplicht in de auto".
+   * De tolschatting verandert mee zodra de route dat doet.
    */
   async function herlaadNaWijziging(): Promise<void> {
-    const [nieuweRoute, nieuweBestemmingen] = await Promise.all([
+    const [nieuweRoute, nieuweBestemmingen, nieuweTol] = await Promise.all([
       api.reisinfo.route(trip.id),
       api.destinations.lijst(trip.id),
+      api.reisinfo.tol(trip.id),
     ]);
     setRoute(nieuweRoute);
     setBestemmingen(nieuweBestemmingen);
+    setTol(nieuweTol);
   }
 
   async function metFout(werk: () => Promise<void>): Promise<void> {
@@ -236,6 +253,57 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
               </div>
             </div>
           )}
+
+        {/* Grove schatting van de tolkosten, op basis van welke stukken van
+            de route tolweg zijn — geen prijsopgave, wel een startpunt. */}
+        {tol?.reden === "ok" && tol.schatting !== null && (
+          <div className="mt-3 border-t border-slate/12 pt-3">
+            <p className="label-mono mb-1.5 text-slate">tol, geschat</p>
+            <ul className="space-y-0.5">
+              {tol.schatting.onderdelen.map((onderdeel) => (
+                <li
+                  key={`${onderdeel.land}-${onderdeel.soort}`}
+                  className="flex items-baseline justify-between gap-3 text-sm"
+                >
+                  <span className="min-w-0 truncate text-ink">
+                    {onderdeel.land}
+                    <span className="text-slate">
+                      {" "}
+                      {onderdeel.soort === "vignet" ? "(vignet)" : `(${onderdeel.km} km tol)`}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-ink">{bedrag(onderdeel.bedragEUR)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-slate/12 pt-1.5">
+              <span className="text-sm font-semibold text-ink">Totaal geschat</span>
+              <span className="shrink-0 font-mono text-sm font-semibold text-ink">
+                {bedrag(tol.schatting.totaalEUR)}
+              </span>
+            </div>
+            <p className="mt-1.5 text-xs text-slate">
+              Een schatting op basis van gemiddelde tarieven, geen prijsopgave.
+            </p>
+            {Math.round(tol.schatting.totaalEUR) !== trip.tolKosten && (
+              <div className="mt-2">
+                <Knop
+                  disabled={bezig}
+                  onClick={() =>
+                    void metFout(async () => {
+                      await api.trips.werkBij(trip.id, {
+                        tolKosten: Math.round(tol.schatting!.totaalEUR),
+                      });
+                      onTripGewijzigd();
+                    })
+                  }
+                >
+                  Vul in bij tolkosten
+                </Knop>
+              </div>
+            )}
+          </div>
+        )}
       </Kaart>
 
       {/* Route van huis via de bestemmingen onderweg naar de eindbestemming. */}

@@ -4,6 +4,7 @@ import { query } from "../db.js";
 import {
   haalBezienswaardigheden,
   haalRoute,
+  haalTolSchatting,
   haalVerkeer,
   haalWeer,
   verkeerCacheMinuten,
@@ -12,6 +13,7 @@ import {
   type Coordinaat,
   type CoordinaatUitkomst,
   type RouteInfo,
+  type TolSchatting,
   type VerkeersIncident,
   type WeerReeks,
 } from "../extern.js";
@@ -257,7 +259,7 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
     const leeg = (waarom: Reden) => ({ incidenten: [] as VerkeersIncident[], reden: waarom });
 
     if (!config.extern.enabled) return leeg("uitgeschakeld");
-    if (config.traffic.tomtomApiKey === "") return leeg("geen-sleutel");
+    if (config.tomtom.apiKey === "") return leeg("geen-sleutel");
 
     const opbouw = await routePunten(trip);
     if ("fout" in opbouw) return leeg(opbouw.fout);
@@ -270,6 +272,30 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
     if (incidenten === null) return leeg("dienst-onbereikbaar");
 
     return { incidenten, reden: "ok" satisfies Reden };
+  });
+
+  /**
+   * Grove schatting van de tolkosten voor de route — welke stukken tolweg
+   * zijn en welke landen een vignet vereisen, via TomTom's eigen route
+   * (los van de OSRM-route hierboven). Geen prijsopgave, wel bruikbaar als
+   * startpunt: de app biedt aan het bedrag over te nemen in tolKosten.
+   */
+  app.get("/trips/:id/tol", async (request) => {
+    const id = pathUuid((request.params as { id?: string }).id);
+    const trip = await haalTrip(id);
+
+    const leeg = (waarom: Reden) => ({ schatting: null as TolSchatting | null, reden: waarom });
+
+    if (!config.extern.enabled) return leeg("uitgeschakeld");
+    if (config.tomtom.apiKey === "") return leeg("geen-sleutel");
+
+    const opbouw = await routePunten(trip);
+    if ("fout" in opbouw) return leeg(opbouw.fout);
+
+    const schatting = await haalTolSchatting(opbouw.punten);
+    if (schatting === null) return leeg("dienst-onbereikbaar");
+
+    return { schatting, reden: "ok" satisfies Reden };
   });
 
   /**

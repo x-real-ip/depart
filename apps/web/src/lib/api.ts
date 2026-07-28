@@ -266,6 +266,24 @@ export interface VerkeerAntwoord {
   reden: string;
 }
 
+/** Eén onderdeel van de tolschatting: een land, met per-km- of vignetkosten. */
+export interface TolOnderdeel {
+  land: string;
+  soort: "per-km" | "vignet";
+  km: number | null;
+  bedragEUR: number;
+}
+
+export interface TolSchatting {
+  totaalEUR: number;
+  onderdelen: TolOnderdeel[];
+}
+
+export interface TolAntwoord {
+  schatting: TolSchatting | null;
+  reden: string;
+}
+
 export type PuntRol = "thuis" | "onderweg" | "bestemming";
 
 /** Eén punt op de kaart: thuis, een tussenliggende bestemming, of de eindbestemming. */
@@ -294,7 +312,7 @@ export const REDEN_TEKST: Record<string, string> = {
   "dienst-onbereikbaar":
     "De dienst is nu niet bereikbaar — dit ligt niet aan je invoer. Probeer het later opnieuw.",
   "te-weinig-punten": "Er zijn te weinig punten voor een route.",
-  "geen-sleutel": "Verkeersinformatie is niet ingesteld voor deze app.",
+  "geen-sleutel": "Deze functie is niet ingesteld voor deze app.",
 };
 
 /** Korte variant voor naast een plaatsnaam. */
@@ -513,6 +531,7 @@ export const api = {
       >,
     verkeer: (tripId: string) =>
       verzoek("GET", `/api/trips/${tripId}/verkeer`) as Promise<VerkeerAntwoord>,
+    tol: (tripId: string) => verzoek("GET", `/api/trips/${tripId}/tol`) as Promise<TolAntwoord>,
   },
 
   /** Adres-autocomplete voor thuisadres, bestemming en overnachtingen. */
