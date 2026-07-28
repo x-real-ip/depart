@@ -59,6 +59,23 @@ export interface PackItemRow {
   volgorde: number;
 }
 
+/** Een zelfgekozen takenlijst, optioneel bij één reiziger — los van de inpaklijsten. */
+export interface TaskListRow {
+  id: string;
+  trip_id: string;
+  naam: string;
+  traveler_id: string | null;
+}
+
+export interface TaskItemRow {
+  id: string;
+  trip_id: string;
+  task_list_id: string;
+  label: string;
+  afgevinkt: boolean;
+  volgorde: number;
+}
+
 /**
  * Een plek waar je bent tijdens de reis — van een korte tussenstop tot de
  * eindbestemming. Verschil zit alleen in wat er ingevuld is: een tussenstop
@@ -164,6 +181,26 @@ export function toPackItem(row: PackItemRow) {
     id: row.id,
     tripId: row.trip_id,
     packListId: row.pack_list_id,
+    label: row.label,
+    afgevinkt: row.afgevinkt,
+    volgorde: row.volgorde,
+  };
+}
+
+export function toTaskList(row: TaskListRow) {
+  return {
+    id: row.id,
+    tripId: row.trip_id,
+    naam: row.naam,
+    travelerId: row.traveler_id,
+  };
+}
+
+export function toTaskItem(row: TaskItemRow) {
+  return {
+    id: row.id,
+    tripId: row.trip_id,
+    taskListId: row.task_list_id,
     label: row.label,
     afgevinkt: row.afgevinkt,
     volgorde: row.volgorde,

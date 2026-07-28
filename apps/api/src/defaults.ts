@@ -31,6 +31,18 @@ export const STANDAARD_PERSOONLIJK = [
   "Kussen",
 ] as const;
 
+/** Praktische dingen die vóór vertrek geregeld moeten zijn, zodat een nieuwe takenlijst niet leeg begint. */
+export const STANDAARD_TAKEN = [
+  "Post tijdelijk stopzetten",
+  "Planten laten verzorgen",
+  "Huisdieren regelen",
+  "Buren of familie informeren",
+  "Geld pinnen of wisselen",
+  "Navigatie/kaarten offline downloaden",
+  "Auto laten nakijken",
+  "Bandenspanning controleren",
+] as const;
+
 /**
  * Documenttypes die bij vrijwel elke kampeervakantie met de auto horen.
  * `perPersoon` betekent: één per reiziger. De rest hoort bij het gezin of bij

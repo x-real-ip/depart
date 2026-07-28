@@ -230,6 +230,16 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
       [id],
     );
 
+    // Zelfde soort cijfer voor de takenlijsten — los van de inpaklijsten.
+    const taakItems = await query<{ afgevinkt: boolean }>(
+      `SELECT afgevinkt FROM task_item WHERE trip_id = $1`,
+      [id],
+    );
+    const taakLijsten = await queryOne<{ aantal: number }>(
+      `SELECT count(*)::int AS aantal FROM task_list WHERE trip_id = $1`,
+      [id],
+    );
+
     const bestemmingen = await queryOne<{ aantal: number }>(
       `SELECT count(*)::int AS aantal FROM destination WHERE trip_id = $1`,
       [id],
@@ -248,6 +258,7 @@ export const tripRoutes: FastifyPluginAsync = async (app) => {
         geldig: statussen.filter((status) => status === "geldig").length,
       },
       inpaklijsten: { ...voortgang(pakItems.rows), lijsten: lijsten?.aantal ?? 0 },
+      taken: { ...voortgang(taakItems.rows), lijsten: taakLijsten?.aantal ?? 0 },
       onderweg: {
         bestemmingen: bestemmingen?.aantal ?? 0,
         noodnummers: noodnummers?.aantal ?? 0,

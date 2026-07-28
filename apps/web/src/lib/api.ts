@@ -133,6 +133,23 @@ export interface PackItem {
 /** Startset voor een nieuwe lijst: kampeer-basisuitrusting of persoonlijke spullen. */
 export type StandaardSoort = "uitrusting" | "persoonlijk";
 
+/** Een zelfgekozen takenlijst, optioneel bij één reiziger — los van de inpaklijsten. */
+export interface TaskList {
+  id: string;
+  tripId: string;
+  naam: string;
+  travelerId: string | null;
+}
+
+export interface TaskItem {
+  id: string;
+  tripId: string;
+  taskListId: string;
+  label: string;
+  afgevinkt: boolean;
+  volgorde: number;
+}
+
 /**
  * Een plek waar je bent tijdens de reis — van een korte tussenstop tot de
  * eindbestemming. Hetzelfde soort ding, alleen met meer of minder ingevuld:
@@ -366,6 +383,8 @@ export interface Overzicht {
   documenten: { totaal: number; ontbreekt: number; letOp: number; geldig: number };
   /** Over alle inpaklijsten heen: hoeveel er zijn en hoe ver je bent. */
   inpaklijsten: Voortgang & { lijsten: number };
+  /** Over alle takenlijsten heen — zelfde soort cijfer, los van de inpaklijsten. */
+  taken: Voortgang & { lijsten: number };
   onderweg: { bestemmingen: number; noodnummers: number };
 }
 
@@ -494,6 +513,45 @@ export const api = {
     herorden: (packListId: string, ids: string[]) =>
       verzoek("PUT", `/api/pack-lists/${packListId}/pack-items/volgorde`, { ids }) as Promise<
         PackItem[]
+      >,
+  },
+
+  /** Eigen takenlijsten: dingen die vóór vertrek moeten gebeuren, los van de inpaklijsten. */
+  taken: {
+    lijst: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/task-lists`) as Promise<TaskList[]>,
+    maak: (tripId: string, naam: string, travelerId: string | null) =>
+      verzoek("POST", `/api/trips/${tripId}/task-lists`, { naam, travelerId }) as Promise<TaskList>,
+    werkBij: (id: string, velden: { naam?: string; travelerId?: string | null }) =>
+      verzoek("PATCH", `/api/task-lists/${id}`, velden) as Promise<TaskList>,
+    verwijder: (id: string) => verzoek("DELETE", `/api/task-lists/${id}`) as Promise<null>,
+    standaardlijst: (id: string) =>
+      verzoek("POST", `/api/task-lists/${id}/standaardlijst`, {}) as Promise<{
+        toegevoegd: number;
+        items: TaskItem[];
+      }>,
+    wisVinkjes: (id: string) =>
+      verzoek("POST", `/api/task-lists/${id}/wis-vinkjes`, {}) as Promise<{ gewist: number }>,
+    /** Plak een bestaande lijst (één taak per regel) om 'm in te importeren. */
+    importeer: (id: string, tekst: string) =>
+      verzoek("POST", `/api/task-lists/${id}/importeer`, { tekst }) as Promise<{
+        toegevoegd: number;
+        overgeslagen: number;
+        items: TaskItem[];
+      }>,
+  },
+
+  taakItems: {
+    lijst: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/task-items`) as Promise<TaskItem[]>,
+    voegToe: (taskListId: string, label: string) =>
+      verzoek("POST", `/api/task-lists/${taskListId}/task-items`, { label }) as Promise<TaskItem>,
+    werkBij: (id: string, velden: { label?: string; afgevinkt?: boolean }) =>
+      verzoek("PATCH", `/api/task-items/${id}`, velden) as Promise<TaskItem>,
+    verwijder: (id: string) => verzoek("DELETE", `/api/task-items/${id}`) as Promise<null>,
+    herorden: (taskListId: string, ids: string[]) =>
+      verzoek("PUT", `/api/task-lists/${taskListId}/task-items/volgorde`, { ids }) as Promise<
+        TaskItem[]
       >,
   },
 

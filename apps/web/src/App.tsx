@@ -8,11 +8,13 @@ import { Instellingen } from "./schermen/Instellingen.tsx";
 import { Onderweg } from "./schermen/Onderweg.tsx";
 import { Overzicht } from "./schermen/Overzicht.tsx";
 import { ReisAanmaken } from "./schermen/ReisAanmaken.tsx";
+import { Taken } from "./schermen/Taken.tsx";
 
 export type Tab =
   | "overzicht"
   | "documenten"
   | "inpaklijst"
+  | "taken"
   | "gerechten"
   | "onderweg"
   | "instellingen";
@@ -21,6 +23,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "overzicht", label: "Overzicht" },
   { id: "documenten", label: "Documenten" },
   { id: "inpaklijst", label: "Inpaklijst" },
+  { id: "taken", label: "Taken" },
   { id: "gerechten", label: "Gerechten" },
   { id: "onderweg", label: "Onderweg" },
 ];
@@ -198,6 +201,7 @@ export function App() {
       {tab === "inpaklijst" && (
         <Inpaklijst tripId={actieveReis.id} reizigers={actieveReis.reizigers} />
       )}
+      {tab === "taken" && <Taken tripId={actieveReis.id} reizigers={actieveReis.reizigers} />}
       {tab === "gerechten" && <Gerechten tripId={actieveReis.id} />}
       {tab === "onderweg" && (
         <Onderweg trip={actieveReis} onTripGewijzigd={() => void herlaadActieveReis()} />

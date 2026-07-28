@@ -11,6 +11,8 @@ import { packListRoutes } from "./routes/packLists.js";
 import { reisinfoRoutes } from "./routes/reisinfo.js";
 import { recipeRoutes } from "./routes/recipes.js";
 import { requirementRoutes } from "./routes/requirements.js";
+import { taskItemRoutes } from "./routes/taskItems.js";
+import { taskListRoutes } from "./routes/taskLists.js";
 import { tripRoutes } from "./routes/trips.js";
 import { initDocumentsPath } from "./storage.js";
 import { NotFoundError, ValidationError } from "./validate.js";
@@ -120,6 +122,8 @@ await app.register(
     await api.register(tripRoutes);
     await api.register(packListRoutes);
     await api.register(packItemRoutes);
+    await api.register(taskListRoutes);
+    await api.register(taskItemRoutes);
     await api.register(destinationRoutes);
     await api.register(contactRoutes);
     await api.register(requirementRoutes);

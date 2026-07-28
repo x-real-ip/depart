@@ -81,7 +81,7 @@ export function Overzicht({
   if (fout !== null) return <Melding tekst={fout} />;
   if (gegevens === null || bestemmingen === null || vereisten === null) return <Laden />;
 
-  const { documenten, inpaklijsten } = gegevens;
+  const { documenten, inpaklijsten, taken } = gegevens;
   const dagen = dagenTot(trip.vertrekdatum);
   const vertrekVan = trip.thuisplaats ?? "thuis";
   // De laatste in de volgorde is de eindbestemming van de reis.
@@ -140,6 +140,7 @@ export function Overzicht({
       <VertrekstatusKaart
         documenten={documenten}
         inpaklijsten={inpaklijsten}
+        taken={taken}
         vereisten={vereisten}
         eindbestemming={eindbestemming}
         landen={landen}
@@ -223,6 +224,7 @@ const STATUS_STIJL = {
 function VertrekstatusKaart({
   documenten,
   inpaklijsten,
+  taken,
   vereisten,
   eindbestemming,
   landen,
@@ -230,6 +232,7 @@ function VertrekstatusKaart({
 }: {
   documenten: OverzichtGegevens["documenten"];
   inpaklijsten: OverzichtGegevens["inpaklijsten"];
+  taken: OverzichtGegevens["taken"];
   vereisten: Requirement[];
   eindbestemming: Destination | null;
   landen: string[];
@@ -278,6 +281,17 @@ function VertrekstatusKaart({
       kritiek: false,
       percentage: inpaklijsten.lijsten === 0 ? undefined : inpaklijsten.percentage,
       onClick: () => gaNaar("inpaklijst"),
+    },
+    {
+      label: "Taken",
+      waarde:
+        taken.lijsten === 0
+          ? "nog geen lijst"
+          : `${taken.afgevinkt} van ${taken.totaal} klaar, ${taken.lijsten} ${taken.lijsten === 1 ? "lijst" : "lijsten"}`,
+      klaar: taken.lijsten > 0 && taken.percentage === 100,
+      kritiek: false,
+      percentage: taken.lijsten === 0 ? undefined : taken.percentage,
+      onClick: () => gaNaar("taken"),
     },
     {
       label: "Reisdocumenten",

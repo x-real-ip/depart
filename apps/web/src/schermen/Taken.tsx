@@ -1,0 +1,643 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  Bevestiging,
+  INVOER_STIJL,
+  Kaart,
+  Knop,
+  Laden,
+  LegeStaat,
+  Melding,
+  Veld,
+  VoortgangsBalk,
+} from "../components/ui.tsx";
+import { api, type TaskItem, type TaskList, type Traveler } from "../lib/api.ts";
+
+/**
+ * Eigen takenlijsten: dingen die vóór vertrek moeten gebeuren — post
+ * stopzetten, verzekering checken, de auto laten nakijken — los van de
+ * inpaklijsten. Elke lijst heeft een naam die je zelf kiest en mag optioneel
+ * bij één reiziger horen. Onbeperkt lijsten, onbeperkt taken per lijst.
+ */
+export function Taken({
+  tripId,
+  reizigers,
+}: {
+  tripId: string;
+  reizigers: Traveler[];
+}) {
+  const [lijsten, setLijsten] = useState<TaskList[] | null>(null);
+  const [items, setItems] = useState<TaskItem[] | null>(null);
+  const [fout, setFout] = useState<string | null>(null);
+  const [actieveLijstId, setActieveLijstId] = useState<string | null>(null);
+  const [nieuwLabel, setNieuwLabel] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importTekst, setImportTekst] = useState("");
+  const [importMelding, setImportMelding] = useState<string | null>(null);
+  const [herschrijft, setHerschrijft] = useState<string | null>(null);
+  const [herschrevenLabel, setHerschrevenLabel] = useState("");
+  const [vraagWissen, setVraagWissen] = useState(false);
+  const [vraagVerwijderLijst, setVraagVerwijderLijst] = useState(false);
+  const [nieuweLijstOpen, setNieuweLijstOpen] = useState(false);
+  const [nieuweLijstNaam, setNieuweLijstNaam] = useState("");
+  const [nieuweLijstReiziger, setNieuweLijstReiziger] = useState("");
+  const [herschrijftLijstNaam, setHerschrijftLijstNaam] = useState(false);
+  const [lijstNaamInvoer, setLijstNaamInvoer] = useState("");
+  const [volgordeBewerken, setVolgordeBewerken] = useState(false);
+  const [gesleept, setGesleept] = useState<string | null>(null);
+  const [bezig, setBezig] = useState(false);
+
+  useEffect(() => {
+    let actueel = true;
+    Promise.all([api.taken.lijst(tripId), api.taakItems.lijst(tripId)])
+      .then(([lijstenResultaat, itemsResultaat]) => {
+        if (!actueel) return;
+        setLijsten(lijstenResultaat);
+        setItems(itemsResultaat);
+        setActieveLijstId((huidig) => huidig ?? lijstenResultaat[0]?.id ?? null);
+      })
+      .catch((error: Error) => {
+        if (actueel) setFout(error.message);
+      });
+    return () => {
+      actueel = false;
+    };
+  }, [tripId]);
+
+  // De gekozen lijst kan verdwenen zijn nadat hij verwijderd is.
+  useEffect(() => {
+    if (lijsten === null) return;
+    if (actieveLijstId !== null && !lijsten.some((lijst) => lijst.id === actieveLijstId)) {
+      setActieveLijstId(lijsten[0]?.id ?? null);
+    }
+  }, [actieveLijstId, lijsten]);
+
+  const actieveLijst = lijsten?.find((lijst) => lijst.id === actieveLijstId) ?? null;
+
+  const zichtbaar = useMemo(
+    () => (items ?? []).filter((item) => item.taskListId === actieveLijstId),
+    [items, actieveLijstId],
+  );
+
+  const percentage =
+    zichtbaar.length === 0
+      ? 0
+      : Math.round((zichtbaar.filter((item) => item.afgevinkt).length / zichtbaar.length) * 100);
+
+  async function metFout(werk: () => Promise<void>): Promise<void> {
+    setBezig(true);
+    setFout(null);
+    try {
+      await werk();
+    } catch (error) {
+      setFout((error as Error).message);
+    } finally {
+      setBezig(false);
+    }
+  }
+
+  async function wisselAfvinken(item: TaskItem): Promise<void> {
+    // Direct in beeld bijwerken; de api volgt. Bij een fout zetten we terug.
+    const vorige = items ?? [];
+    setItems(vorige.map((r) => (r.id === item.id ? { ...r, afgevinkt: !r.afgevinkt } : r)));
+    try {
+      await api.taakItems.werkBij(item.id, { afgevinkt: !item.afgevinkt });
+    } catch (error) {
+      setItems(vorige);
+      setFout((error as Error).message);
+    }
+  }
+
+  /** Verplaatst een taak naar een nieuwe plek binnen dezelfde lijst en slaat de volgorde op. */
+  async function verplaatsItem(vanId: string, naarId: string): Promise<void> {
+    if (actieveLijstId === null) return;
+    const vanIndex = zichtbaar.findIndex((item) => item.id === vanId);
+    const naarIndex = zichtbaar.findIndex((item) => item.id === naarId);
+    if (vanIndex === -1 || naarIndex === -1 || vanIndex === naarIndex) return;
+
+    const herordend = [...zichtbaar];
+    const [verplaatst] = herordend.splice(vanIndex, 1);
+    herordend.splice(naarIndex, 0, verplaatst!);
+
+    // Alleen de zichtbare lijst herordenen; taken van andere lijsten blijven
+    // ongemoeid.
+    const vorige = items ?? [];
+    const overigen = vorige.filter((item) => item.taskListId !== actieveLijstId);
+    setItems([...overigen, ...herordend]);
+
+    try {
+      const opgeslagen = await api.taakItems.herorden(
+        actieveLijstId,
+        herordend.map((item) => item.id),
+      );
+      setItems([...overigen, ...opgeslagen]);
+    } catch (error) {
+      setItems(vorige);
+      setFout((error as Error).message);
+    }
+  }
+
+  async function voegToe(): Promise<void> {
+    if (nieuwLabel.trim() === "" || actieveLijstId === null) return;
+    await metFout(async () => {
+      const nieuw = await api.taakItems.voegToe(actieveLijstId, nieuwLabel.trim());
+      setItems([...(items ?? []), nieuw]);
+      setNieuwLabel("");
+    });
+  }
+
+  async function importeer(): Promise<void> {
+    if (importTekst.trim() === "" || actieveLijstId === null) return;
+    await metFout(async () => {
+      const resultaat = await api.taken.importeer(actieveLijstId, importTekst);
+      setItems([...(items ?? []), ...resultaat.items]);
+      setImportMelding(
+        resultaat.overgeslagen === 0
+          ? `${resultaat.toegevoegd} ${resultaat.toegevoegd === 1 ? "taak" : "taken"} toegevoegd.`
+          : `${resultaat.toegevoegd} toegevoegd, ${resultaat.overgeslagen} stonden er al op.`,
+      );
+      setImportTekst("");
+      setImportOpen(false);
+    });
+  }
+
+  async function maakLijst(): Promise<void> {
+    if (nieuweLijstNaam.trim() === "") return;
+    await metFout(async () => {
+      const nieuw = await api.taken.maak(
+        tripId,
+        nieuweLijstNaam.trim(),
+        nieuweLijstReiziger === "" ? null : nieuweLijstReiziger,
+      );
+      setLijsten([...(lijsten ?? []), nieuw]);
+      setActieveLijstId(nieuw.id);
+      setNieuweLijstOpen(false);
+      setNieuweLijstNaam("");
+      setNieuweLijstReiziger("");
+    });
+  }
+
+  if (fout !== null && lijsten === null) return <Melding tekst={fout} />;
+  if (lijsten === null || items === null) return <Laden />;
+
+  return (
+    <div className="space-y-4">
+      {lijsten.length > 0 && (
+        <div
+          className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1"
+          role="tablist"
+          aria-label="Kies een takenlijst"
+        >
+          {lijsten.map((lijst) => (
+            <LijstKnop
+              key={lijst.id}
+              actief={actieveLijstId === lijst.id}
+              onClick={() => {
+                setActieveLijstId(lijst.id);
+                setImportMelding(null);
+                setVolgordeBewerken(false);
+              }}
+              label={lijst.naam}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={() => setNieuweLijstOpen(true)}
+            className="shrink-0 rounded-xl border border-dashed border-slate/35 px-3.5 py-2 text-sm font-semibold text-slate hover:border-slate/60 hover:text-ink"
+          >
+            + Nieuwe lijst
+          </button>
+        </div>
+      )}
+
+      {fout !== null && <Melding tekst={fout} onSluit={() => setFout(null)} />}
+
+      {nieuweLijstOpen && (
+        <Kaart className="space-y-3">
+          <h2 className="font-display text-lg font-extrabold text-ink">Nieuwe takenlijst</h2>
+          <Veld label="Naam" verplicht ingevuld={nieuweLijstNaam.trim() !== ""}>
+            <input
+              className={INVOER_STIJL}
+              placeholder="Voor vertrek"
+              value={nieuweLijstNaam}
+              autoFocus
+              onChange={(event) => setNieuweLijstNaam(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && nieuweLijstNaam.trim() !== "") {
+                  event.preventDefault();
+                  void maakLijst();
+                }
+              }}
+            />
+          </Veld>
+          {reizigers.length > 0 && (
+            <Veld label="Hoort bij" hint="Optioneel.">
+              <select
+                className={INVOER_STIJL}
+                value={nieuweLijstReiziger}
+                onChange={(event) => setNieuweLijstReiziger(event.target.value)}
+              >
+                <option value="">Niemand specifiek</option>
+                {reizigers.map((reiziger) => (
+                  <option key={reiziger.id} value={reiziger.id}>
+                    {reiziger.naam}
+                  </option>
+                ))}
+              </select>
+            </Veld>
+          )}
+          <div className="flex gap-2">
+            <Knop
+              soort="primair"
+              disabled={bezig || nieuweLijstNaam.trim() === ""}
+              onClick={maakLijst}
+            >
+              Lijst aanmaken
+            </Knop>
+            <Knop
+              soort="stil"
+              onClick={() => {
+                setNieuweLijstOpen(false);
+                setNieuweLijstNaam("");
+                setNieuweLijstReiziger("");
+              }}
+            >
+              Terug
+            </Knop>
+          </div>
+        </Kaart>
+      )}
+
+      {lijsten.length === 0 && !nieuweLijstOpen ? (
+        <Kaart>
+          <LegeStaat
+            titel="Nog geen takenlijsten"
+            uitnodiging="Maak een lijst voor alles wat er nog moet gebeuren vóór vertrek."
+            actie={
+              <Knop soort="primair" onClick={() => setNieuweLijstOpen(true)}>
+                Maak een takenlijst
+              </Knop>
+            }
+          />
+        </Kaart>
+      ) : (
+        actieveLijst !== null && (
+          <>
+            <Kaart className="space-y-2">
+              {herschrijftLijstNaam ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    className={INVOER_STIJL}
+                    value={lijstNaamInvoer}
+                    autoFocus
+                    onChange={(event) => setLijstNaamInvoer(event.target.value)}
+                    aria-label="Nieuwe naam voor deze lijst"
+                  />
+                  <Knop
+                    soort="primair"
+                    disabled={bezig || lijstNaamInvoer.trim() === ""}
+                    onClick={() =>
+                      void metFout(async () => {
+                        const bijgewerkt = await api.taken.werkBij(actieveLijst.id, {
+                          naam: lijstNaamInvoer.trim(),
+                        });
+                        setLijsten(
+                          (lijsten ?? []).map((l) => (l.id === bijgewerkt.id ? bijgewerkt : l)),
+                        );
+                        setHerschrijftLijstNaam(false);
+                      })
+                    }
+                  >
+                    Opslaan
+                  </Knop>
+                  <Knop soort="stil" onClick={() => setHerschrijftLijstNaam(false)}>
+                    Terug
+                  </Knop>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHerschrijftLijstNaam(true);
+                      setLijstNaamInvoer(actieveLijst.naam);
+                    }}
+                    className="min-w-0 flex-1 truncate rounded-lg px-1 py-0.5 text-left font-display text-lg font-extrabold text-ink hover:bg-canvas"
+                    aria-label={`${actieveLijst.naam} hernoemen`}
+                  >
+                    {actieveLijst.naam}
+                  </button>
+                  {actieveLijst.travelerId !== null && (
+                    <span className="label-mono shrink-0 rounded-full bg-forest/12 px-2 py-1 text-forest">
+                      {reizigers.find((r) => r.id === actieveLijst.travelerId)?.naam ?? ""}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <VoortgangsBalk percentage={percentage} />
+              <p className="text-xs text-slate">
+                {zichtbaar.filter((item) => item.afgevinkt).length} van {zichtbaar.length} klaar
+              </p>
+            </Kaart>
+
+            {zichtbaar.length === 0 ? (
+              <Kaart>
+                <LegeStaat
+                  titel="Nog leeg"
+                  uitnodiging="Voeg toe wat er nog moet gebeuren, of begin met een standaardlijst."
+                  actie={
+                    <Knop
+                      soort="primair"
+                      disabled={bezig}
+                      onClick={() =>
+                        void metFout(async () => {
+                          const resultaat = await api.taken.standaardlijst(actieveLijst.id);
+                          setItems([...(items ?? []), ...resultaat.items]);
+                        })
+                      }
+                    >
+                      Voor vertrek regelen
+                    </Knop>
+                  }
+                />
+              </Kaart>
+            ) : (
+              <Kaart className="p-0">
+                {zichtbaar.length > 1 && (
+                  <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                    <span className="label-mono text-slate">
+                      {volgordeBewerken ? "Versleep om te sorteren" : "Taken"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setVolgordeBewerken(!volgordeBewerken)}
+                      className="text-xs font-semibold text-slate underline decoration-slate/40 underline-offset-2 hover:text-ink"
+                    >
+                      {volgordeBewerken ? "Klaar" : "Volgorde aanpassen"}
+                    </button>
+                  </div>
+                )}
+                <ul className="divide-y divide-slate/12">
+                  {volgordeBewerken
+                    ? zichtbaar.map((item) => (
+                        <li
+                          key={item.id}
+                          draggable
+                          onDragStart={() => setGesleept(item.id)}
+                          onDragEnd={() => setGesleept(null)}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            if (gesleept !== null) void verplaatsItem(gesleept, item.id);
+                            setGesleept(null);
+                          }}
+                          className={`flex items-center gap-3 px-4 py-3 ${
+                            gesleept === item.id ? "opacity-45" : ""
+                          }`}
+                        >
+                          <span aria-hidden="true" className="shrink-0 cursor-grab text-slate">
+                            ⠿
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                            {item.label}
+                          </span>
+                        </li>
+                      ))
+                    : zichtbaar.map((item) => (
+                        <li key={item.id} className="flex items-center gap-2 px-2 py-1">
+                          {herschrijft === item.id ? (
+                            <div className="flex w-full items-center gap-2 py-1.5">
+                              <input
+                                className={INVOER_STIJL}
+                                value={herschrevenLabel}
+                                onChange={(event) => setHerschrevenLabel(event.target.value)}
+                                aria-label="Nieuwe naam voor deze taak"
+                                autoFocus
+                              />
+                              <Knop
+                                soort="primair"
+                                disabled={bezig || herschrevenLabel.trim() === ""}
+                                onClick={() =>
+                                  void metFout(async () => {
+                                    const bijgewerkt = await api.taakItems.werkBij(item.id, {
+                                      label: herschrevenLabel.trim(),
+                                    });
+                                    setItems(
+                                      (items ?? []).map((r) => (r.id === item.id ? bijgewerkt : r)),
+                                    );
+                                    setHerschrijft(null);
+                                  })
+                                }
+                              >
+                                Opslaan
+                              </Knop>
+                              <Knop soort="stil" onClick={() => setHerschrijft(null)}>
+                                Terug
+                              </Knop>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void wisselAfvinken(item)}
+                                aria-pressed={item.afgevinkt}
+                                className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-canvas"
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className={`flex size-5 shrink-0 items-center justify-center rounded-md border-2 text-xs font-bold ${
+                                    item.afgevinkt
+                                      ? "border-forest bg-forest text-white"
+                                      : "border-slate/35 text-transparent"
+                                  }`}
+                                >
+                                  ✓
+                                </span>
+                                <span
+                                  className={`truncate text-sm ${
+                                    item.afgevinkt ? "text-slate line-through" : "text-ink"
+                                  }`}
+                                >
+                                  {item.label}
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setHerschrijft(item.id);
+                                  setHerschrevenLabel(item.label);
+                                }}
+                                aria-label={`${item.label} herschrijven`}
+                                className="shrink-0 rounded-lg px-2 py-2 text-xs text-slate hover:bg-canvas hover:text-ink"
+                              >
+                                Herschrijf
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void metFout(async () => {
+                                    await api.taakItems.verwijder(item.id);
+                                    setItems((items ?? []).filter((r) => r.id !== item.id));
+                                  })
+                                }
+                                aria-label={`${item.label} verwijderen`}
+                                className="shrink-0 rounded-lg px-2 py-2 text-xs text-slate hover:bg-alert/8 hover:text-alert"
+                              >
+                                Weg
+                              </button>
+                            </>
+                          )}
+                        </li>
+                      ))}
+                </ul>
+              </Kaart>
+            )}
+
+            {/* Taak toevoegen. Geen <form>: een onClick-handler doet het werk. */}
+            <Kaart>
+              <div className="flex gap-2">
+                <input
+                  className={INVOER_STIJL}
+                  placeholder="Wat moet er nog gebeuren?"
+                  value={nieuwLabel}
+                  aria-label="Nieuwe taak"
+                  onChange={(event) => setNieuwLabel(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && nieuwLabel.trim() !== "") {
+                      event.preventDefault();
+                      void voegToe();
+                    }
+                  }}
+                />
+                <Knop soort="primair" disabled={bezig || nieuwLabel.trim() === ""} onClick={voegToe}>
+                  Voeg toe
+                </Knop>
+              </div>
+            </Kaart>
+
+            {/* Een bestaande lijst importeren: plak 'm, één taak per regel. */}
+            {importMelding !== null && !importOpen && (
+              <p className="px-1 text-xs text-slate">{importMelding}</p>
+            )}
+            {importOpen ? (
+              <Kaart className="space-y-2">
+                <Veld
+                  label="Plak een bestaande lijst"
+                  hint="Eén taak per regel. Opsommingstekens en nummering herkent de app vanzelf."
+                >
+                  <textarea
+                    className={`${INVOER_STIJL} min-h-32 resize-y`}
+                    placeholder={"Post stopzetten\nVerzekering checken\nGeld pinnen"}
+                    value={importTekst}
+                    autoFocus
+                    onChange={(event) => setImportTekst(event.target.value)}
+                  />
+                </Veld>
+                <div className="flex gap-2">
+                  <Knop
+                    soort="primair"
+                    disabled={bezig || importTekst.trim() === ""}
+                    onClick={importeer}
+                  >
+                    Importeer
+                  </Knop>
+                  <Knop
+                    soort="stil"
+                    onClick={() => {
+                      setImportOpen(false);
+                      setImportTekst("");
+                    }}
+                  >
+                    Terug
+                  </Knop>
+                </div>
+              </Kaart>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setImportOpen(true);
+                  setImportMelding(null);
+                }}
+                className="px-1 text-left text-xs font-semibold text-slate underline decoration-slate/40 underline-offset-2 hover:text-ink"
+              >
+                Importeer een bestaande lijst
+              </button>
+            )}
+
+            <div className="flex flex-col gap-2">
+              {vraagWissen ? (
+                <Bevestiging
+                  vraag="Alle vinkjes in deze lijst wissen?"
+                  toelichting="De taken blijven staan, alleen de vinkjes gaan eraf."
+                  bevestigLabel="Wis de vinkjes"
+                  onAnnuleer={() => setVraagWissen(false)}
+                  onBevestig={() =>
+                    void metFout(async () => {
+                      await api.taken.wisVinkjes(actieveLijst.id);
+                      setItems(
+                        (items ?? []).map((item) =>
+                          item.taskListId === actieveLijst.id ? { ...item, afgevinkt: false } : item,
+                        ),
+                      );
+                      setVraagWissen(false);
+                    })
+                  }
+                />
+              ) : (
+                <Knop breed soort="stil" onClick={() => setVraagWissen(true)}>
+                  Wis alle vinkjes
+                </Knop>
+              )}
+
+              {vraagVerwijderLijst ? (
+                <Bevestiging
+                  vraag={`Lijst "${actieveLijst.naam}" verwijderen?`}
+                  toelichting="Alle taken op deze lijst gaan mee. Dit kun je niet ongedaan maken."
+                  bevestigLabel="Verwijder de lijst"
+                  onAnnuleer={() => setVraagVerwijderLijst(false)}
+                  onBevestig={() =>
+                    void metFout(async () => {
+                      await api.taken.verwijder(actieveLijst.id);
+                      setLijsten((lijsten ?? []).filter((l) => l.id !== actieveLijst.id));
+                      setItems((items ?? []).filter((item) => item.taskListId !== actieveLijst.id));
+                      setVraagVerwijderLijst(false);
+                    })
+                  }
+                />
+              ) : (
+                <Knop breed soort="waarschuwing" onClick={() => setVraagVerwijderLijst(true)}>
+                  Deze lijst verwijderen
+                </Knop>
+              )}
+            </div>
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
+function LijstKnop({
+  actief,
+  onClick,
+  label,
+}: {
+  actief: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={actief}
+      onClick={onClick}
+      className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
+        actief ? "bg-amber text-navy" : "bg-white text-slate hover:text-ink"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
