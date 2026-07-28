@@ -252,6 +252,12 @@ export interface VerkeersIncident {
   omschrijving: string | null;
   vertragingMin: number | null;
   weg: string | null;
+  van: string | null;
+  naar: string | null;
+  beginTijd: string | null;
+  eindTijd: string | null;
+  lat: number | null;
+  lon: number | null;
 }
 
 export interface VerkeerAntwoord {

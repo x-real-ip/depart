@@ -6,6 +6,7 @@ import {
   haalRoute,
   haalVerkeer,
   haalWeer,
+  verkeerCacheMinuten,
   zoekCoordinaat,
   type Bezienswaardigheid,
   type Coordinaat,
@@ -264,7 +265,8 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
     const route = await haalRoute(opbouw.punten);
     if (route === null || route.geometrie.length === 0) return leeg("dienst-onbereikbaar");
 
-    const incidenten = await haalVerkeer(route.geometrie);
+    const ttlMinuten = verkeerCacheMinuten(trip.vertrekdatum, trip.terugdatum);
+    const incidenten = await haalVerkeer(route.geometrie, ttlMinuten);
     if (incidenten === null) return leeg("dienst-onbereikbaar");
 
     return { incidenten, reden: "ok" satisfies Reden };

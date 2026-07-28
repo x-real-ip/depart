@@ -90,10 +90,10 @@ function uitCache<T>(sleutel: string): T | undefined {
   return item.waarde as T;
 }
 
-function inCache(sleutel: string, waarde: unknown): void {
+function inCache(sleutel: string, waarde: unknown, ttlMinuten = config.extern.cacheMinuten): void {
   cache.set(sleutel, {
     waarde,
-    verloopt: Date.now() + config.extern.cacheMinuten * 60_000,
+    verloopt: Date.now() + ttlMinuten * 60_000,
   });
   // De cache mag niet onbeperkt groeien; dit is een app voor één gezin.
   if (cache.size > 200) {
@@ -623,6 +623,13 @@ export interface VerkeersIncident {
   omschrijving: string | null;
   vertragingMin: number | null;
   weg: string | null;
+  van: string | null;
+  naar: string | null;
+  beginTijd: string | null;
+  eindTijd: string | null;
+  /** Representatief punt van het incident, voor "meer informatie" met een kaartje. */
+  lat: number | null;
+  lon: number | null;
 }
 
 export interface Bbox {
@@ -703,16 +710,50 @@ export function verkeerChunks(geometrie: [number, number][]): Bbox[] {
   return Array.from({ length: MAX_CHUNKS }, (_, i) => chunks[Math.floor(i * stap)]!);
 }
 
+interface TomTomIncident {
+  geometry?: { type?: string; coordinates?: unknown };
+  properties?: {
+    iconCategory?: number;
+    magnitudeOfDelay?: number;
+    delay?: number;
+    events?: { description?: string }[];
+    roadNumbers?: string[];
+    startTime?: string;
+    endTime?: string;
+    from?: string;
+    to?: string;
+  };
+}
+
 interface TomTomIncidentAntwoord {
-  incidents?: {
-    properties?: {
-      iconCategory?: number;
-      magnitudeOfDelay?: number;
-      delay?: number;
-      events?: { description?: string }[];
-      roadNumbers?: string[];
-    };
-  }[];
+  incidents?: TomTomIncident[];
+}
+
+/**
+ * Eén punt om het incident op de kaart te tonen. TomTom geeft een Point
+ * ([lon,lat]) of een LineString (een reeks [lon,lat]-punten, voor een
+ * incident dat een heel wegvak beslaat) — bij een LineString is het middelste
+ * punt representatiever dan het eerste.
+ */
+function representatiefPunt(geometry: TomTomIncident["geometry"]): Coordinaat | null {
+  const coordinates = geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length === 0) return null;
+
+  const eerste = coordinates[0];
+  if (typeof eerste === "number") {
+    // Point: [lon, lat].
+    const lon = coordinates[0] as number;
+    const lat = coordinates[1] as number;
+    return typeof lat === "number" ? { lat, lon } : null;
+  }
+
+  // LineString: reeks van [lon, lat]-paren.
+  const lijn = coordinates as unknown[];
+  const midden = lijn[Math.floor(lijn.length / 2)];
+  if (!Array.isArray(midden) || typeof midden[0] !== "number" || typeof midden[1] !== "number") {
+    return null;
+  }
+  return { lon: midden[0], lat: midden[1] };
 }
 
 /** TomTom's iconCategory-codes, vertaald. Onbekende codes tonen als "Overig". */
@@ -740,11 +781,31 @@ const INCIDENT_ERNST: Record<number, string> = {
   4: "zeer ernstig",
 };
 
-/** Niet oneindig veel incidenten — de ergste vertragingen eerst. */
+/** Niet oneindig veel incidenten, over de hele route heen. */
 const VERKEER_MAX = 20;
 
+/**
+ * TomTom geeft ook incidenten zonder gemeten effect mee (magnitudeOfDelay 0
+ * — een gladheidswaarschuwing op een zijstraat, een obstakel zonder
+ * vertraging). In een stad als Utrecht zijn dat er op zichzelf al
+ * honderden; die zijn het tonen niet waard. Een ongeluk of een afgesloten
+ * weg blijft relevant, ook zonder gemeten vertraging.
+ */
+const BELANGRIJKE_CATEGORIE = new Set(["Ongeluk", "Weg afgesloten"]);
+
+/**
+ * Hoogstens dit aantal per stuk van de route. Zonder deze grens verdringt
+ * een druk stadscentrum vlak bij huis alles wat verderop op de route
+ * gebeurt — VERKEER_MAX zou dan grotendeels gevuld raken met incidenten van
+ * de eerste kilometers.
+ */
+const PER_CHUNK_MAX = 6;
+
 /** Eén stuk van de route bevragen bij TomTom; null bij een mislukte aanvraag. */
-async function haalVerkeerVoorBbox(bbox: Bbox): Promise<VerkeersIncident[] | null> {
+async function haalVerkeerVoorBbox(
+  bbox: Bbox,
+  ttlMinuten: number,
+): Promise<VerkeersIncident[] | null> {
   const sleutel = `verkeer:${bbox.minLat.toFixed(2)},${bbox.minLon.toFixed(2)},${bbox.maxLat.toFixed(2)},${bbox.maxLon.toFixed(2)}`;
   const bewaard = uitCache<VerkeersIncident[]>(sleutel);
   if (bewaard !== undefined) return bewaard;
@@ -754,7 +815,7 @@ async function haalVerkeerVoorBbox(bbox: Bbox): Promise<VerkeersIncident[] | nul
   url.searchParams.set("bbox", `${bbox.minLon},${bbox.minLat},${bbox.maxLon},${bbox.maxLat}`);
   url.searchParams.set(
     "fields",
-    "{incidents{properties{iconCategory,magnitudeOfDelay,delay,events{description},roadNumbers}}}",
+    "{incidents{geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,delay,events{description},roadNumbers,startTime,endTime,from,to}}}",
   );
   url.searchParams.set("language", "nl-NL");
   url.searchParams.set("timeValidityFilter", "present");
@@ -766,6 +827,7 @@ async function haalVerkeerVoorBbox(bbox: Bbox): Promise<VerkeersIncident[] | nul
     .map((element): VerkeersIncident | null => {
       const eigenschappen = element.properties;
       if (eigenschappen === undefined) return null;
+      const punt = representatiefPunt(element.geometry);
       return {
         categorie: INCIDENT_CATEGORIE[eigenschappen.iconCategory ?? -1] ?? "Overig",
         ernst: INCIDENT_ERNST[eigenschappen.magnitudeOfDelay ?? 0] ?? "onbekend",
@@ -773,12 +835,24 @@ async function haalVerkeerVoorBbox(bbox: Bbox): Promise<VerkeersIncident[] | nul
         vertragingMin:
           eigenschappen.delay !== undefined ? Math.round(eigenschappen.delay / 60) : null,
         weg: eigenschappen.roadNumbers?.[0] ?? null,
+        van: eigenschappen.from ?? null,
+        naar: eigenschappen.to ?? null,
+        beginTijd: eigenschappen.startTime ?? null,
+        eindTijd: eigenschappen.endTime ?? null,
+        lat: punt?.lat ?? null,
+        lon: punt?.lon ?? null,
       };
     })
-    .filter((incident): incident is VerkeersIncident => incident !== null);
+    .filter((incident): incident is VerkeersIncident => incident !== null)
+    .filter((incident) => incident.ernst !== "onbekend" || BELANGRIJKE_CATEGORIE.has(incident.categorie));
 
-  inCache(sleutel, incidenten);
-  return incidenten;
+  // De grootste vertraging eerst, dan pas afkappen — zo blijft van dit stuk
+  // van de route het meest relevante over.
+  incidenten.sort((a, b) => (b.vertragingMin ?? 0) - (a.vertragingMin ?? 0));
+  const beperkt = incidenten.slice(0, PER_CHUNK_MAX);
+
+  inCache(sleutel, beperkt, ttlMinuten);
+  return beperkt;
 }
 
 /**
@@ -795,6 +869,7 @@ async function haalVerkeerVoorBbox(bbox: Bbox): Promise<VerkeersIncident[] | nul
  */
 export async function haalVerkeer(
   geometrie: [number, number][],
+  ttlMinuten: number,
 ): Promise<VerkeersIncident[] | null> {
   if (!config.extern.enabled) return null;
   if (config.traffic.tomtomApiKey === "") return null;
@@ -802,7 +877,9 @@ export async function haalVerkeer(
   const chunks = verkeerChunks(geometrie);
   if (chunks.length === 0) return [];
 
-  const resultaten = await Promise.all(chunks.map((chunk) => haalVerkeerVoorBbox(chunk)));
+  const resultaten = await Promise.all(
+    chunks.map((chunk) => haalVerkeerVoorBbox(chunk, ttlMinuten)),
+  );
   // Al mislukt een stuk van de route, dan is er nog altijd verkeersinfo voor
   // de rest — pas als ALLES mislukt is er echt niets te tonen.
   if (resultaten.every((resultaat) => resultaat === null)) return null;
@@ -811,16 +888,74 @@ export async function haalVerkeer(
   const incidenten: VerkeersIncident[] = [];
   for (const resultaat of resultaten) {
     for (const incident of resultaat ?? []) {
-      const sleutel = `${incident.weg ?? ""}|${incident.omschrijving ?? incident.categorie}`;
+      // Op locatie ontdubbelen, niet op omschrijving: "Afgesloten" komt in
+      // een grote stad tientallen keren voor op heel verschillende plekken,
+      // en die zijn geen dubbele meldingen van hetzelfde incident.
+      const sleutel =
+        incident.lat !== null && incident.lon !== null
+          ? `${incident.categorie}|${incident.lat.toFixed(3)}|${incident.lon.toFixed(3)}`
+          : `${incident.categorie}|${incident.weg ?? ""}|${incident.omschrijving ?? ""}`;
       if (gezien.has(sleutel)) continue;
       gezien.add(sleutel);
       incidenten.push(incident);
     }
   }
 
-  // De grootste vertraging eerst — dat is het meest relevant voor de reis.
-  incidenten.sort((a, b) => (b.vertragingMin ?? 0) - (a.vertragingMin ?? 0));
+  // In de volgorde van de reis: een incident dat je het eerst tegenkomt staat
+  // bovenaan, niet het ergste incident. Een onbekende locatie (zeldzaam, maar
+  // de bron garandeert geen coördinaat) komt onderaan terecht.
+  const volgordeIndex = new Map<VerkeersIncident, number>();
+  for (const incident of incidenten) {
+    volgordeIndex.set(
+      incident,
+      incident.lat === null || incident.lon === null
+        ? Number.POSITIVE_INFINITY
+        : dichtstbijzijndeRoutePuntIndex({ lat: incident.lat, lon: incident.lon }, geometrie),
+    );
+  }
+  incidenten.sort((a, b) => volgordeIndex.get(a)! - volgordeIndex.get(b)!);
+
   return incidenten.slice(0, VERKEER_MAX);
+}
+
+/** Index van het dichtstbijzijnde punt in de routegeometrie — genoeg om op te sorteren. */
+function dichtstbijzijndeRoutePuntIndex(
+  punt: Coordinaat,
+  geometrie: [number, number][],
+): number {
+  let besteIndex = 0;
+  let besteAfstand = Infinity;
+  for (let i = 0; i < geometrie.length; i++) {
+    const [lat, lon] = geometrie[i]!;
+    const afstand = (lat - punt.lat) ** 2 + (lon - punt.lon) ** 2;
+    if (afstand < besteAfstand) {
+      besteAfstand = afstand;
+      besteIndex = i;
+    }
+  }
+  return besteIndex;
+}
+
+/**
+ * Hoe lang een antwoord van TomTom in de cache blijft, afhankelijk van hoe
+ * dicht de reis nadert. Verse verkeersinformatie heeft alleen zin vlak voor
+ * en tijdens de reis — een file van nu zegt niets over over drie weken. Het
+ * dagbudget van de gratis laag gaat dus vooral naar de periode waar het
+ * ertoe doet: kort onderweg, wat langer in de dagen ervoor, en ruim
+ * hergebruikt zolang de reis nog ver weg is.
+ */
+export function verkeerCacheMinuten(vertrekdatum: string, terugdatum: string): number {
+  const vandaag = isoDatum(new Date());
+  if (vandaag >= vertrekdatum && vandaag <= terugdatum) return 5;
+  if (vandaag > terugdatum) return 720;
+
+  const dagenTotVertrek = Math.round(
+    (Date.parse(`${vertrekdatum}T00:00:00`) - Date.parse(`${vandaag}T00:00:00`)) / 86_400_000,
+  );
+  if (dagenTotVertrek <= 1) return 15;
+  if (dagenTotVertrek <= 3) return 60;
+  if (dagenTotVertrek <= 7) return 180;
+  return 720;
 }
 
 // --- Datumhulp -------------------------------------------------------------
