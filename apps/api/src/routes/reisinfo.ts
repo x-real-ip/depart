@@ -244,10 +244,10 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * Actuele verkeersinformatie (files, ongelukken, wegwerkzaamheden) binnen
-   * de bounding box van de berekende route. Anders dan weer, route en
-   * bezienswaardigheden werkt dit niet zonder sleutel (zie config.ts) — is
-   * die niet gezet, dan komt "geen-sleutel" terug in plaats van een fout.
+   * Actuele verkeersinformatie (files, ongelukken, wegwerkzaamheden) langs de
+   * berekende route. Anders dan weer, route en bezienswaardigheden werkt dit
+   * niet zonder sleutel (zie config.ts) — is die niet gezet, dan komt
+   * "geen-sleutel" terug in plaats van een fout.
    */
   app.get("/trips/:id/verkeer", async (request) => {
     const id = pathUuid((request.params as { id?: string }).id);
@@ -264,18 +264,7 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
     const route = await haalRoute(opbouw.punten);
     if (route === null || route.geometrie.length === 0) return leeg("dienst-onbereikbaar");
 
-    let minLat = Infinity;
-    let maxLat = -Infinity;
-    let minLon = Infinity;
-    let maxLon = -Infinity;
-    for (const [lat, lon] of route.geometrie) {
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-      if (lon < minLon) minLon = lon;
-      if (lon > maxLon) maxLon = lon;
-    }
-
-    const incidenten = await haalVerkeer({ minLat, maxLat, minLon, maxLon });
+    const incidenten = await haalVerkeer(route.geometrie);
     if (incidenten === null) return leeg("dienst-onbereikbaar");
 
     return { incidenten, reden: "ok" satisfies Reden };

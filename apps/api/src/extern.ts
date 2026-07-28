@@ -632,6 +632,77 @@ export interface Bbox {
   maxLon: number;
 }
 
+/**
+ * Oppervlakte van een bounding box in km², met lengtegraad geschaald naar de
+ * breedtegraad — anders is een graad lengte bij Chamonix (46° noord) een stuk
+ * korter dan bij de evenaar, en klopt de schatting niet.
+ */
+function bboxOppervlakteKm2(bbox: Bbox): number {
+  const KM_PER_GRAAD_BREEDTE = 111.32;
+  const middenBreedteRad = ((bbox.minLat + bbox.maxLat) / 2) * (Math.PI / 180);
+  const kmPerGraadLengte = KM_PER_GRAAD_BREEDTE * Math.cos(middenBreedteRad);
+  const hoogteKm = (bbox.maxLat - bbox.minLat) * KM_PER_GRAAD_BREEDTE;
+  const breedteKm = (bbox.maxLon - bbox.minLon) * kmPerGraadLengte;
+  return hoogteKm * breedteKm;
+}
+
+/**
+ * TomTom wijst een bbox groter dan 10.000 km² af — voor een reis van
+ * Nederland naar de Franse Alpen is de kortste-afstand-bbox rond de 160.000
+ * km². Een bbox rond de hele route werkt dus niet; in plaats daarvan volgt
+ * deze functie de routegeometrie (die de weg volgt, niet de rechte lijn) en
+ * knipt hem op in stukken die stuk voor stuk onder de grens blijven. Ruim
+ * onder de 10.000 km² gehouden, zodat afronding niet alsnog over de grens
+ * duwt.
+ */
+const MAX_CHUNK_OPPERVLAKTE_KM2 = 8000;
+/** Bij een erg lange route niet oneindig veel aparte aanvragen doen. */
+const MAX_CHUNKS = 12;
+
+export function verkeerChunks(geometrie: [number, number][]): Bbox[] {
+  if (geometrie.length === 0) return [];
+
+  const chunks: Bbox[] = [];
+  let huidige: Bbox = {
+    minLat: geometrie[0]![0],
+    maxLat: geometrie[0]![0],
+    minLon: geometrie[0]![1],
+    maxLon: geometrie[0]![1],
+  };
+
+  for (let i = 1; i < geometrie.length; i++) {
+    const [lat, lon] = geometrie[i]!;
+    const proef: Bbox = {
+      minLat: Math.min(huidige.minLat, lat),
+      maxLat: Math.max(huidige.maxLat, lat),
+      minLon: Math.min(huidige.minLon, lon),
+      maxLon: Math.max(huidige.maxLon, lon),
+    };
+    if (bboxOppervlakteKm2(proef) > MAX_CHUNK_OPPERVLAKTE_KM2) {
+      chunks.push(huidige);
+      // Het vorige punt telt dubbel mee, zodat er geen gat in de route valt
+      // tussen het einde van dit stuk en het begin van het volgende.
+      const [vorigeLat, vorigeLon] = geometrie[i - 1]!;
+      huidige = {
+        minLat: Math.min(vorigeLat, lat),
+        maxLat: Math.max(vorigeLat, lat),
+        minLon: Math.min(vorigeLon, lon),
+        maxLon: Math.max(vorigeLon, lon),
+      };
+    } else {
+      huidige = proef;
+    }
+  }
+  chunks.push(huidige);
+
+  if (chunks.length <= MAX_CHUNKS) return chunks;
+
+  // Te veel stukken voor een erg lange route: gelijkmatig uitdunnen in
+  // plaats van alleen het begin van de route te dekken.
+  const stap = chunks.length / MAX_CHUNKS;
+  return Array.from({ length: MAX_CHUNKS }, (_, i) => chunks[Math.floor(i * stap)]!);
+}
+
 interface TomTomIncidentAntwoord {
   incidents?: {
     properties?: {
@@ -672,16 +743,8 @@ const INCIDENT_ERNST: Record<number, string> = {
 /** Niet oneindig veel incidenten — de ergste vertragingen eerst. */
 const VERKEER_MAX = 20;
 
-/**
- * Actuele incidenten (files, ongelukken, wegwerkzaamheden) binnen een
- * bounding box, via TomTom. Anders dan weer, route en bezienswaardigheden
- * werkt dit niet zonder sleutel — is die niet gezet, dan geeft de functie
- * null terug, precies als bij een onbereikbare dienst.
- */
-export async function haalVerkeer(bbox: Bbox): Promise<VerkeersIncident[] | null> {
-  if (!config.extern.enabled) return null;
-  if (config.traffic.tomtomApiKey === "") return null;
-
+/** Eén stuk van de route bevragen bij TomTom; null bij een mislukte aanvraag. */
+async function haalVerkeerVoorBbox(bbox: Bbox): Promise<VerkeersIncident[] | null> {
   const sleutel = `verkeer:${bbox.minLat.toFixed(2)},${bbox.minLon.toFixed(2)},${bbox.maxLat.toFixed(2)},${bbox.maxLon.toFixed(2)}`;
   const bewaard = uitCache<VerkeersIncident[]>(sleutel);
   if (bewaard !== undefined) return bewaard;
@@ -714,12 +777,50 @@ export async function haalVerkeer(bbox: Bbox): Promise<VerkeersIncident[] | null
     })
     .filter((incident): incident is VerkeersIncident => incident !== null);
 
+  inCache(sleutel, incidenten);
+  return incidenten;
+}
+
+/**
+ * Actuele incidenten (files, ongelukken, wegwerkzaamheden) langs de route,
+ * via TomTom. Anders dan weer, route en bezienswaardigheden werkt dit niet
+ * zonder sleutel — is die niet gezet, dan geeft de functie null terug,
+ * precies als bij een onbereikbare dienst.
+ *
+ * TomTom's bbox mag niet groter zijn dan 10.000 km², en een reis van
+ * Nederland naar de Alpen is dat als geheel ruimschoots — zie
+ * `verkeerChunks`. Elk stuk van de route wordt apart bevraagd en de
+ * resultaten gaan samen, ontdubbeld op plek + omschrijving (een incident bij
+ * de rand van twee stukken komt anders dubbel in de lijst).
+ */
+export async function haalVerkeer(
+  geometrie: [number, number][],
+): Promise<VerkeersIncident[] | null> {
+  if (!config.extern.enabled) return null;
+  if (config.traffic.tomtomApiKey === "") return null;
+
+  const chunks = verkeerChunks(geometrie);
+  if (chunks.length === 0) return [];
+
+  const resultaten = await Promise.all(chunks.map((chunk) => haalVerkeerVoorBbox(chunk)));
+  // Al mislukt een stuk van de route, dan is er nog altijd verkeersinfo voor
+  // de rest — pas als ALLES mislukt is er echt niets te tonen.
+  if (resultaten.every((resultaat) => resultaat === null)) return null;
+
+  const gezien = new Set<string>();
+  const incidenten: VerkeersIncident[] = [];
+  for (const resultaat of resultaten) {
+    for (const incident of resultaat ?? []) {
+      const sleutel = `${incident.weg ?? ""}|${incident.omschrijving ?? incident.categorie}`;
+      if (gezien.has(sleutel)) continue;
+      gezien.add(sleutel);
+      incidenten.push(incident);
+    }
+  }
+
   // De grootste vertraging eerst — dat is het meest relevant voor de reis.
   incidenten.sort((a, b) => (b.vertragingMin ?? 0) - (a.vertragingMin ?? 0));
-  const beperkt = incidenten.slice(0, VERKEER_MAX);
-
-  inCache(sleutel, beperkt);
-  return beperkt;
+  return incidenten.slice(0, VERKEER_MAX);
 }
 
 // --- Datumhulp -------------------------------------------------------------
