@@ -13,7 +13,7 @@ import { haalTrip } from "./trips.js";
 
 const RECIPE_KOLOMMEN = `id, trip_id, naam`;
 const RECIPE_INGREDIENT_KOLOMMEN = `id, recipe_id, label, volgorde`;
-const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt`;
+const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt, volgorde`;
 
 async function haalRecipe(id: string): Promise<RecipeRow> {
   const row = await queryOne<RecipeRow>(`SELECT ${RECIPE_KOLOMMEN} FROM recipe WHERE id = $1`, [
@@ -29,6 +29,15 @@ async function haalPackListVoorTrip(id: string, tripId: string): Promise<void> {
     [id, tripId],
   );
   if (!lijst) throw new NotFoundError("Deze inpaklijst bestaat niet bij deze reis");
+}
+
+/** Eerstvolgende vrije volgorde op een inpaklijst — nieuwe items komen achteraan. */
+async function volgendeVolgorde(packListId: string): Promise<number> {
+  const rij = await queryOne<{ volgende: number }>(
+    `SELECT COALESCE(max(volgorde) + 1, 0) AS volgende FROM pack_item WHERE pack_list_id = $1`,
+    [packListId],
+  );
+  return rij?.volgende ?? 0;
 }
 
 /**
@@ -108,16 +117,18 @@ export const recipeRoutes: FastifyPluginAsync = async (app) => {
         [packListId],
       );
       const aanwezig = new Set(bestaand.rows.map((row) => row.label.toLowerCase()));
+      let volgorde = await volgendeVolgorde(packListId);
 
       const nieuw: PackItemRow[] = [];
       for (const ingredient of ingredienten.rows) {
         if (aanwezig.has(ingredient.label.toLowerCase())) continue;
         aanwezig.add(ingredient.label.toLowerCase());
         const created = await client.query<PackItemRow>(
-          `INSERT INTO pack_item (trip_id, pack_list_id, label)
-           VALUES ($1, $2, $3) RETURNING ${PACK_ITEM_KOLOMMEN}`,
-          [gerecht.trip_id, packListId, ingredient.label],
+          `INSERT INTO pack_item (trip_id, pack_list_id, label, volgorde)
+           VALUES ($1, $2, $3, $4) RETURNING ${PACK_ITEM_KOLOMMEN}`,
+          [gerecht.trip_id, packListId, ingredient.label, volgorde],
         );
+        volgorde += 1;
         nieuw.push(created.rows[0]!);
       }
       return nieuw;

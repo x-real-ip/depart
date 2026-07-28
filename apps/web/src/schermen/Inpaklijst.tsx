@@ -41,6 +41,8 @@ export function Inpaklijst({
   const [nieuweLijstReiziger, setNieuweLijstReiziger] = useState("");
   const [herschrijftLijstNaam, setHerschrijftLijstNaam] = useState(false);
   const [lijstNaamInvoer, setLijstNaamInvoer] = useState("");
+  const [volgordeBewerken, setVolgordeBewerken] = useState(false);
+  const [gesleept, setGesleept] = useState<string | null>(null);
   const [bezig, setBezig] = useState(false);
 
   useEffect(() => {
@@ -98,6 +100,35 @@ export function Inpaklijst({
     setItems(vorige.map((r) => (r.id === item.id ? { ...r, afgevinkt: !r.afgevinkt } : r)));
     try {
       await api.inpaklijstItems.werkBij(item.id, { afgevinkt: !item.afgevinkt });
+    } catch (error) {
+      setItems(vorige);
+      setFout((error as Error).message);
+    }
+  }
+
+  /** Verplaatst een item naar een nieuwe plek binnen dezelfde lijst en slaat de volgorde op. */
+  async function verplaatsItem(vanId: string, naarId: string): Promise<void> {
+    if (actieveLijstId === null) return;
+    const vanIndex = zichtbaar.findIndex((item) => item.id === vanId);
+    const naarIndex = zichtbaar.findIndex((item) => item.id === naarId);
+    if (vanIndex === -1 || naarIndex === -1 || vanIndex === naarIndex) return;
+
+    const herordend = [...zichtbaar];
+    const [verplaatst] = herordend.splice(vanIndex, 1);
+    herordend.splice(naarIndex, 0, verplaatst!);
+
+    // Alleen de zichtbare lijst herordenen; items van andere lijsten blijven
+    // ongemoeid.
+    const vorige = items ?? [];
+    const overigen = vorige.filter((item) => item.packListId !== actieveLijstId);
+    setItems([...overigen, ...herordend]);
+
+    try {
+      const opgeslagen = await api.inpaklijstItems.herorden(
+        actieveLijstId,
+        herordend.map((item) => item.id),
+      );
+      setItems([...overigen, ...opgeslagen]);
     } catch (error) {
       setItems(vorige);
       setFout((error as Error).message);
@@ -162,6 +193,7 @@ export function Inpaklijst({
               onClick={() => {
                 setActieveLijstId(lijst.id);
                 setImportMelding(null);
+                setVolgordeBewerken(false);
               }}
               label={lijst.naam}
             />
@@ -349,8 +381,47 @@ export function Inpaklijst({
               </Kaart>
             ) : (
               <Kaart className="p-0">
+                {zichtbaar.length > 1 && (
+                  <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                    <span className="label-mono text-slate">
+                      {volgordeBewerken ? "Versleep om te sorteren" : "Items"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setVolgordeBewerken(!volgordeBewerken)}
+                      className="text-xs font-semibold text-slate underline decoration-slate/40 underline-offset-2 hover:text-ink"
+                    >
+                      {volgordeBewerken ? "Klaar" : "Volgorde aanpassen"}
+                    </button>
+                  </div>
+                )}
                 <ul className="divide-y divide-slate/12">
-                  {zichtbaar.map((item) => (
+                  {volgordeBewerken
+                    ? zichtbaar.map((item) => (
+                        <li
+                          key={item.id}
+                          draggable
+                          onDragStart={() => setGesleept(item.id)}
+                          onDragEnd={() => setGesleept(null)}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            if (gesleept !== null) void verplaatsItem(gesleept, item.id);
+                            setGesleept(null);
+                          }}
+                          className={`flex items-center gap-3 px-4 py-3 ${
+                            gesleept === item.id ? "opacity-45" : ""
+                          }`}
+                        >
+                          <span aria-hidden="true" className="shrink-0 cursor-grab text-slate">
+                            ⠿
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                            {item.label}
+                          </span>
+                        </li>
+                      ))
+                    : zichtbaar.map((item) => (
                     <li key={item.id} className="flex items-center gap-2 px-2 py-1">
                       {herschrijft === item.id ? (
                         <div className="flex w-full items-center gap-2 py-1.5">

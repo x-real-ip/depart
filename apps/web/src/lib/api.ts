@@ -127,6 +127,7 @@ export interface PackItem {
   packListId: string;
   label: string;
   afgevinkt: boolean;
+  volgorde: number;
 }
 
 /** Startset voor een nieuwe lijst: kampeer-basisuitrusting of persoonlijke spullen. */
@@ -472,6 +473,10 @@ export const api = {
     werkBij: (id: string, velden: { label?: string; afgevinkt?: boolean }) =>
       verzoek("PATCH", `/api/pack-items/${id}`, velden) as Promise<PackItem>,
     verwijder: (id: string) => verzoek("DELETE", `/api/pack-items/${id}`) as Promise<null>,
+    herorden: (packListId: string, ids: string[]) =>
+      verzoek("PUT", `/api/pack-lists/${packListId}/pack-items/volgorde`, { ids }) as Promise<
+        PackItem[]
+      >,
   },
 
   /** Bestemmingen: van thuis tot de eindbestemming, in volgorde. */

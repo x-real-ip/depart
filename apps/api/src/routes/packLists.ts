@@ -6,7 +6,7 @@ import { Fields, NotFoundError, ValidationError, pathUuid } from "../validate.js
 import { haalTrip } from "./trips.js";
 
 const PACK_LIST_KOLOMMEN = `id, trip_id, naam, traveler_id`;
-const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt`;
+const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt, volgorde`;
 
 async function haalPackList(id: string): Promise<PackListRow> {
   const row = await queryOne<PackListRow>(
@@ -15,6 +15,15 @@ async function haalPackList(id: string): Promise<PackListRow> {
   );
   if (!row) throw new NotFoundError("Deze inpaklijst bestaat niet");
   return row;
+}
+
+/** Eerstvolgende vrije volgorde op een lijst — nieuwe items komen achteraan. */
+async function volgendeVolgorde(packListId: string): Promise<number> {
+  const rij = await queryOne<{ volgende: number }>(
+    `SELECT COALESCE(max(volgorde) + 1, 0) AS volgende FROM pack_item WHERE pack_list_id = $1`,
+    [packListId],
+  );
+  return rij?.volgende ?? 0;
 }
 
 async function controleerReiziger(travelerId: string, tripId: string): Promise<void> {
@@ -134,15 +143,17 @@ export const packListRoutes: FastifyPluginAsync = async (app) => {
         [id],
       );
       const aanwezig = new Set(bestaand.rows.map((row) => row.label.toLowerCase()));
+      let volgorde = await volgendeVolgorde(id);
 
       const nieuw: PackItemRow[] = [];
       for (const label of labels) {
         if (aanwezig.has(label.toLowerCase())) continue;
         const created = await client.query<PackItemRow>(
-          `INSERT INTO pack_item (trip_id, pack_list_id, label)
-           VALUES ($1, $2, $3) RETURNING ${PACK_ITEM_KOLOMMEN}`,
-          [lijst.trip_id, id, label],
+          `INSERT INTO pack_item (trip_id, pack_list_id, label, volgorde)
+           VALUES ($1, $2, $3, $4) RETURNING ${PACK_ITEM_KOLOMMEN}`,
+          [lijst.trip_id, id, label, volgorde],
         );
+        volgorde += 1;
         nieuw.push(created.rows[0]!);
       }
       return nieuw;
@@ -174,16 +185,18 @@ export const packListRoutes: FastifyPluginAsync = async (app) => {
         [id],
       );
       const aanwezig = new Set(bestaand.rows.map((row) => row.label.toLowerCase()));
+      let volgorde = await volgendeVolgorde(id);
 
       const nieuw: PackItemRow[] = [];
       for (const label of labels) {
         if (aanwezig.has(label.toLowerCase())) continue;
         aanwezig.add(label.toLowerCase());
         const created = await client.query<PackItemRow>(
-          `INSERT INTO pack_item (trip_id, pack_list_id, label)
-           VALUES ($1, $2, $3) RETURNING ${PACK_ITEM_KOLOMMEN}`,
-          [lijst.trip_id, id, label],
+          `INSERT INTO pack_item (trip_id, pack_list_id, label, volgorde)
+           VALUES ($1, $2, $3, $4) RETURNING ${PACK_ITEM_KOLOMMEN}`,
+          [lijst.trip_id, id, label, volgorde],
         );
+        volgorde += 1;
         nieuw.push(created.rows[0]!);
       }
       return nieuw;
@@ -213,11 +226,12 @@ export const packListRoutes: FastifyPluginAsync = async (app) => {
     const id = pathUuid((request.params as { id?: string }).id);
     const lijst = await haalPackList(id);
     const fields = new Fields(request.body);
+    const volgorde = await volgendeVolgorde(id);
 
     const row = await queryOne<PackItemRow>(
-      `INSERT INTO pack_item (trip_id, pack_list_id, label) VALUES ($1, $2, $3)
+      `INSERT INTO pack_item (trip_id, pack_list_id, label, volgorde) VALUES ($1, $2, $3, $4)
        RETURNING ${PACK_ITEM_KOLOMMEN}`,
-      [lijst.trip_id, id, fields.text("label", { max: 120 })],
+      [lijst.trip_id, id, fields.text("label", { max: 120 }), volgorde],
     );
     reply.code(201);
     return toPackItem(row!);

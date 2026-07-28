@@ -56,6 +56,7 @@ export interface PackItemRow {
   pack_list_id: string;
   label: string;
   afgevinkt: boolean;
+  volgorde: number;
 }
 
 /**
@@ -165,6 +166,7 @@ export function toPackItem(row: PackItemRow) {
     packListId: row.pack_list_id,
     label: row.label,
     afgevinkt: row.afgevinkt,
+    volgorde: row.volgorde,
   };
 }
 
