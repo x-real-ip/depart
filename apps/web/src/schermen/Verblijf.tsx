@@ -12,7 +12,7 @@ import {
   type WeerDag,
   type WeerReeks,
 } from "../lib/api.ts";
-import { datumLang, weerIcoon } from "../lib/format.ts";
+import { datumKort, datumLang, weerIcoon } from "../lib/format.ts";
 import { Gerechten } from "./Gerechten.tsx";
 
 /**
@@ -210,12 +210,13 @@ function WeerKaart({
 }
 
 function WeerKolom({ reeks }: { reeks: WeerReeks }) {
-  // Het gemiddelde over de reeks geeft een beter beeld dan één dag.
-  const gemiddeldeMax = gemiddelde(reeks.dagen.map((dag) => dag.maxTemp));
-  const gemiddeldeMin = gemiddelde(reeks.dagen.map((dag) => dag.minTemp));
-  const hoogsteWind = maximum(reeks.dagen.map((dag) => dag.windKmh));
-  const hoogsteRegen = maximum(reeks.dagen.map((dag) => dag.regenkans));
-  const algemeenBeeld = meestVoorkomendIcoon(reeks.dagen);
+  // De eerste dag in de reeks is de eerstvolgende relevante dag (vandaag, of
+  // de incheckdag als de reis nog niet begonnen is) — een echte dag met echte
+  // cijfers, geen gemiddelde of piekwaarde over de hele periode die niet meer
+  // overeenkomt met wat je buiten ziet.
+  const eersteDag = reeks.dagen[0] ?? null;
+  const { icoon, omschrijving } = weerIcoon(eersteDag?.weercode ?? null);
+  const isVandaag = eersteDag !== null && eersteDag.datum === isoDatumVandaag();
 
   const [gekozenDatum, setGekozenDatum] = useState<string | null>(null);
   const gekozenDag = reeks.dagen.find((dag) => dag.datum === gekozenDatum) ?? null;
@@ -224,47 +225,42 @@ function WeerKolom({ reeks }: { reeks: WeerReeks }) {
     <div className="rounded-xl bg-canvas px-3 py-3">
       <p className="label-mono text-slate">{reeks.plaats}</p>
       <div className="mt-1 flex items-center gap-2">
-        {algemeenBeeld !== null && (
+        {eersteDag !== null && (
           <span
             className="text-2xl leading-none"
             role="img"
-            aria-label={algemeenBeeld.omschrijving}
-            title={algemeenBeeld.omschrijving}
+            aria-label={omschrijving}
+            title={omschrijving}
           >
-            {algemeenBeeld.icoon}
+            {icoon}
           </span>
         )}
         <p className="font-mono text-2xl font-semibold text-ink">
-          {gemiddeldeMax === null ? (
-            "—"
-          ) : (
-            <>
-              <span className="text-sm font-normal text-slate">gem. </span>
-              {Math.round(gemiddeldeMax)}°
-            </>
-          )}
+          {eersteDag?.maxTemp == null ? "—" : `${Math.round(eersteDag.maxTemp)}°`}
         </p>
       </div>
       <p className="text-[11px] text-slate/70">
-        Dit zijn cijfers over de hele periode hieronder, niet van nu — tik een dag aan voor het precieze weer van die dag.
+        {eersteDag === null
+          ? ""
+          : `Weer voor ${isVandaag ? "vandaag" : datumKort(eersteDag.datum)} — tik een andere dag aan voor die dag.`}
       </p>
       <dl className="mt-2 space-y-0.5 text-xs text-slate">
         <Regel
           label="nacht"
-          waarde={gemiddeldeMin === null ? "—" : `${Math.round(gemiddeldeMin)}°`}
+          waarde={eersteDag?.minTemp == null ? "—" : `${Math.round(eersteDag.minTemp)}°`}
         />
-        <Regel label="wind" waarde={hoogsteWind === null ? "—" : `${Math.round(hoogsteWind)} km/u`} />
         <Regel
-          label="regen"
-          waarde={hoogsteRegen === null ? "—" : `${Math.round(hoogsteRegen)}%`}
+          label="wind"
+          waarde={eersteDag?.windKmh == null ? "—" : `${Math.round(eersteDag.windKmh)} km/u`}
         />
+        <Regel label="regen" waarde={eersteDag?.regenkans == null ? "—" : `${eersteDag.regenkans}%`} />
       </dl>
 
       {/* De losse dagen, zodat je ziet of het één natte dag is of de hele week.
           Klik een dag voor het volledige overzicht daaronder. */}
       <ul className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Kies een dag">
         {reeks.dagen.map((dag) => {
-          const { icoon, omschrijving } = weerIcoon(dag.weercode);
+          const { icoon: dagIcoon, omschrijving: dagOmschrijving } = weerIcoon(dag.weercode);
           const actief = dag.datum === gekozenDatum;
           return (
             <li key={dag.datum} className="shrink-0">
@@ -281,9 +277,9 @@ function WeerKolom({ reeks }: { reeks: WeerReeks }) {
                 <span
                   className="mt-0.5 block text-base leading-none"
                   role="img"
-                  aria-label={omschrijving}
+                  aria-label={dagOmschrijving}
                 >
-                  {icoon}
+                  {dagIcoon}
                 </span>
                 <span className="mt-0.5 block font-mono text-xs font-semibold text-ink">
                   {dag.maxTemp === null ? "—" : Math.round(dag.maxTemp)}
@@ -297,6 +293,11 @@ function WeerKolom({ reeks }: { reeks: WeerReeks }) {
       {gekozenDag !== null && <DagDetail dag={gekozenDag} />}
     </div>
   );
+}
+
+function isoDatumVandaag(): string {
+  const nu = new Date();
+  return `${nu.getFullYear()}-${String(nu.getMonth() + 1).padStart(2, "0")}-${String(nu.getDate()).padStart(2, "0")}`;
 }
 
 /** Volledig overzicht van één dag: geopend door er in de rij op te klikken. */
@@ -326,23 +327,6 @@ function DagDetail({ dag }: { dag: WeerDag }) {
 }
 
 /** Welk icoon het vaakst voorkomt over de dagen heen — het algemene beeld, niet één dag. */
-function meestVoorkomendIcoon(
-  dagen: WeerDag[],
-): { icoon: string; omschrijving: string } | null {
-  const tellingen = new Map<string, { icoon: string; omschrijving: string; aantal: number }>();
-  for (const dag of dagen) {
-    const { icoon, omschrijving } = weerIcoon(dag.weercode);
-    if (dag.weercode === null) continue;
-    const huidig = tellingen.get(icoon);
-    tellingen.set(icoon, { icoon, omschrijving, aantal: (huidig?.aantal ?? 0) + 1 });
-  }
-  let beste: { icoon: string; omschrijving: string; aantal: number } | null = null;
-  for (const item of tellingen.values()) {
-    if (beste === null || item.aantal > beste.aantal) beste = item;
-  }
-  return beste;
-}
-
 function Regel({ label, waarde }: { label: string; waarde: string }) {
   return (
     <div className="flex justify-between">
@@ -423,17 +407,6 @@ function BezienswaardighedenKaart({ gegevens }: { gegevens: BezienswaardighedenA
 }
 
 // --- Rekenhulp -------------------------------------------------------------
-
-function gemiddelde(waarden: (number | null)[]): number | null {
-  const echte = waarden.filter((waarde): waarde is number => waarde !== null);
-  if (echte.length === 0) return null;
-  return echte.reduce((som, waarde) => som + waarde, 0) / echte.length;
-}
-
-function maximum(waarden: (number | null)[]): number | null {
-  const echte = waarden.filter((waarde): waarde is number => waarde !== null);
-  return echte.length === 0 ? null : Math.max(...echte);
-}
 
 const DAG_AFKORTING = new Intl.DateTimeFormat("nl-NL", { weekday: "short" });
 
