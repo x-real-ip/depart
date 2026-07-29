@@ -670,7 +670,9 @@ function LijstKnop({
       {percentage !== null && (
         <span
           aria-hidden="true"
-          className={`size-2 shrink-0 rounded-full ${percentage === 100 ? "bg-forest" : "bg-navy"}`}
+          className={`size-2.5 shrink-0 rounded-full ${
+            percentage === 100 ? "bg-forest" : "border-2 border-slate/60"
+          }`}
         />
       )}
       {label}
