@@ -12,7 +12,7 @@ import {
   type WeerDag,
   type WeerReeks,
 } from "../lib/api.ts";
-import { weerIcoon } from "../lib/format.ts";
+import { datumLang, weerIcoon } from "../lib/format.ts";
 import { Gerechten } from "./Gerechten.tsx";
 
 /**
@@ -217,6 +217,9 @@ function WeerKolom({ reeks }: { reeks: WeerReeks }) {
   const hoogsteRegen = maximum(reeks.dagen.map((dag) => dag.regenkans));
   const algemeenBeeld = meestVoorkomendIcoon(reeks.dagen);
 
+  const [gekozenDatum, setGekozenDatum] = useState<string | null>(null);
+  const gekozenDag = reeks.dagen.find((dag) => dag.datum === gekozenDatum) ?? null;
+
   return (
     <div className="rounded-xl bg-canvas px-3 py-3">
       <p className="label-mono text-slate">{reeks.plaats}</p>
@@ -247,28 +250,67 @@ function WeerKolom({ reeks }: { reeks: WeerReeks }) {
         />
       </dl>
 
-      {/* De losse dagen, zodat je ziet of het één natte dag is of de hele week. */}
-      <ul className="mt-3 flex gap-2 overflow-x-auto pb-1">
+      {/* De losse dagen, zodat je ziet of het één natte dag is of de hele week.
+          Klik een dag voor het volledige overzicht daaronder. */}
+      <ul className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Kies een dag">
         {reeks.dagen.map((dag) => {
           const { icoon, omschrijving } = weerIcoon(dag.weercode);
+          const actief = dag.datum === gekozenDatum;
           return (
-            <li key={dag.datum} className="shrink-0 text-center">
-              <span className="label-mono block text-slate/70">{dagAfkorting(dag.datum)}</span>
-              <span
-                className="mt-0.5 block text-base leading-none"
-                role="img"
-                aria-label={omschrijving}
-                title={`${omschrijving}${dag.regenkans !== null ? ` · ${dag.regenkans}% regenkans` : ""}`}
+            <li key={dag.datum} className="shrink-0">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={actief}
+                onClick={() => setGekozenDatum((huidig) => (huidig === dag.datum ? null : dag.datum))}
+                className={`w-11 rounded-lg py-1 text-center transition-colors ${
+                  actief ? "bg-white ring-1 ring-navy/25" : "hover:bg-white/60"
+                }`}
               >
-                {icoon}
-              </span>
-              <span className="mt-0.5 block font-mono text-xs font-semibold text-ink">
-                {dag.maxTemp === null ? "—" : Math.round(dag.maxTemp)}
-              </span>
+                <span className="label-mono block text-slate/70">{dagAfkorting(dag.datum)}</span>
+                <span
+                  className="mt-0.5 block text-base leading-none"
+                  role="img"
+                  aria-label={omschrijving}
+                >
+                  {icoon}
+                </span>
+                <span className="mt-0.5 block font-mono text-xs font-semibold text-ink">
+                  {dag.maxTemp === null ? "—" : Math.round(dag.maxTemp)}
+                </span>
+              </button>
             </li>
           );
         })}
       </ul>
+
+      {gekozenDag !== null && <DagDetail dag={gekozenDag} />}
+    </div>
+  );
+}
+
+/** Volledig overzicht van één dag: geopend door er in de rij op te klikken. */
+function DagDetail({ dag }: { dag: WeerDag }) {
+  const { icoon, omschrijving } = weerIcoon(dag.weercode);
+  return (
+    <div className="mt-3 rounded-lg border border-slate/12 bg-white px-3 py-3">
+      <div className="flex items-center gap-2">
+        <span className="text-2xl leading-none" role="img" aria-label={omschrijving}>
+          {icoon}
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{datumLang(dag.datum)}</p>
+          <p className="text-xs text-slate">{omschrijving}</p>
+        </div>
+      </div>
+      <dl className="mt-3 grid grid-cols-3 gap-3">
+        <Gegeven label="max" waarde={dag.maxTemp === null ? "—" : `${Math.round(dag.maxTemp)}°`} />
+        <Gegeven label="min" waarde={dag.minTemp === null ? "—" : `${Math.round(dag.minTemp)}°`} />
+        <Gegeven label="wind" waarde={dag.windKmh === null ? "—" : `${Math.round(dag.windKmh)} km/u`} />
+      </dl>
+      <p className="mt-2 text-xs text-slate">
+        {dag.regenkans === null ? "Regenkans onbekend" : `${dag.regenkans}% kans op regen`}
+      </p>
     </div>
   );
 }
