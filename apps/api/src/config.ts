@@ -49,10 +49,11 @@ export const config = {
      */
     overpassUrl: process.env.OVERPASS_URL ?? "https://overpass-api.de/api/interpreter",
     /**
-     * Zes categorieën in één query duurt in een drukke stad al gauw acht
-     * seconden — de gewone timeout hierboven is daarvoor te krap.
+     * Zes categorieën in één query, binnen een straal van zowat een uur
+     * rijden: dat duurt al gauw vijftien tot twintig seconden — de gewone
+     * timeout hierboven is daarvoor te krap.
      */
-    overpassTimeoutMs: Number(process.env.OVERPASS_TIMEOUT_MS ?? 20_000),
+    overpassTimeoutMs: Number(process.env.OVERPASS_TIMEOUT_MS ?? 30_000),
     /** Hoe lang een antwoord in het geheugen blijft staan. */
     cacheMinuten: Number(process.env.EXTERN_CACHE_MINUTES ?? 30),
     timeoutMs: Number(process.env.EXTERN_TIMEOUT_MS ?? 8000),

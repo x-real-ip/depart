@@ -506,23 +506,27 @@ const POI_CATEGORIEEN: { tag: string; waarde: string; categorie: string }[] = [
   { tag: "amenity", waarde: "restaurant", categorie: "Restaurant" },
 ];
 
-/** Straal om de bestemming waarbinnen gezocht wordt — "in de buurt", niet de hele regio. */
-const POI_STRAAL_METER = 5000;
 /**
- * Hoogstens dit aantal per categorie. Overpass geeft resultaten terug op
- * element-id, niet op volgorde van de query — één `out` aan het eind laat
- * restaurants (verreweg de talrijkste) dus alle andere categorieën
- * wegdrukken. Een eigen `out` per categorie voorkomt dat.
+ * Straal om de bestemming waarbinnen gezocht wordt: ruwweg een uur rijden.
+ * Overpass kent geen rijtijd, dus dit is een hemelsbrede benadering (~70 km
+ * bij gemiddeld plattelandstempo) — geen navigatieberekening.
  */
-const POI_PER_CATEGORIE = 6;
-/** In totaal hoogstens dit aantal, over alle categorieën heen. */
-const POI_TOTAAL_MAX = 30;
+const POI_STRAAL_METER = 70_000;
+/**
+ * Hoogstens dit aantal per categorie uit Overpass. Overpass geeft resultaten
+ * terug op element-id, niet op volgorde van de query — één `out` aan het
+ * eind laat restaurants (verreweg de talrijkste) dus alle andere categorieën
+ * wegdrukken. Een eigen `out` per categorie voorkomt dat, en met de bredere
+ * straal is er ruimte voor genoeg keuze om daarna nog te schiften.
+ */
+const POI_PER_CATEGORIE = 10;
+/** De top die je te zien krijgt, over alle categorieën heen. */
+const POI_TOTAAL_MAX = 10;
 
 /**
  * Eén Overpass-query, met een los blok en een eigen `out` per categorie.
- * Duurder dan één around-filter voor alles, maar bij vijf kilometer straal
- * ruim binnen de marge — en het enige dat garandeert dat musea en
- * uitkijkpunten niet verdrinken in restaurants.
+ * Duurder dan één around-filter voor alles, maar dat is het enige dat
+ * garandeert dat musea en uitkijkpunten niet verdrinken in restaurants.
  */
 function overpassQuery(coordinaat: Coordinaat): string {
   const rond = `around:${POI_STRAAL_METER},${coordinaat.lat},${coordinaat.lon}`;
@@ -595,13 +599,44 @@ export async function haalBezienswaardigheden(
     });
   }
 
-  // Dichtstbijzijnde eerst; niet oneindig veel, anders wordt het een muur van
-  // stipjes in plaats van een lijstje om uit te kiezen.
-  resultaten.sort((a, b) => a.afstandKm - b.afstandKm);
-  const beperkt = resultaten.slice(0, POI_TOTAAL_MAX);
-
+  const beperkt = topBezienswaardigheden(resultaten);
   inCache(sleutel, beperkt);
   return beperkt;
+}
+
+/**
+ * Kiest de top uit alle gevonden plekken, verdeeld over de categorieën in
+ * plaats van gewoon de dichtstbijzijnde N — anders vult een enkel restaurant
+ * op 200 meter de hele lijst terwijl het enige uitkijkpunt op 40 km net
+ * buiten de boot valt. Elke ronde levert elke categorie (dichtstbijzijnde
+ * eerst binnen die categorie) één plek, tot de lijst vol is of alles op is.
+ * Het resultaat staat weer op afstand gesorteerd.
+ */
+function topBezienswaardigheden(resultaten: Bezienswaardigheid[]): Bezienswaardigheid[] {
+  const perCategorie = new Map<string, Bezienswaardigheid[]>();
+  for (const plek of resultaten) {
+    const lijst = perCategorie.get(plek.categorie) ?? [];
+    lijst.push(plek);
+    perCategorie.set(plek.categorie, lijst);
+  }
+  for (const lijst of perCategorie.values()) {
+    lijst.sort((a, b) => a.afstandKm - b.afstandKm);
+  }
+
+  const gekozen: Bezienswaardigheid[] = [];
+  let vooruitgang = true;
+  while (gekozen.length < POI_TOTAAL_MAX && vooruitgang) {
+    vooruitgang = false;
+    for (const { categorie } of POI_CATEGORIEEN) {
+      if (gekozen.length >= POI_TOTAAL_MAX) break;
+      const volgende = perCategorie.get(categorie)?.shift();
+      if (volgende === undefined) continue;
+      gekozen.push(volgende);
+      vooruitgang = true;
+    }
+  }
+
+  return gekozen.sort((a, b) => a.afstandKm - b.afstandKm);
 }
 
 /** Hemelsbrede afstand in kilometers (Haversine), op één decimaal. */

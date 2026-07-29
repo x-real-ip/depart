@@ -290,7 +290,7 @@ function BezienswaardighedenKaart({ gegevens }: { gegevens: BezienswaardighedenA
         <KaartKop>Bezienswaardigheden in de buurt</KaartKop>
         <p className="text-sm text-slate">
           {gegevens.reden === "ok"
-            ? "Niets gevonden binnen 5 km van je bestemming."
+            ? "Niets gevonden binnen ongeveer een uur rijden van je bestemming."
             : (REDEN_TEKST[gegevens.reden] ?? "Geen bezienswaardigheden beschikbaar.")}
         </p>
       </Kaart>
@@ -300,7 +300,7 @@ function BezienswaardighedenKaart({ gegevens }: { gegevens: BezienswaardighedenA
   return (
     <Kaart className="p-0">
       <div className="px-4 pt-4 pb-1">
-        <KaartKop extra={<span className="text-xs text-slate">binnen 5 km</span>}>
+        <KaartKop extra={<span className="text-xs text-slate">binnen ~1 uur rijden</span>}>
           Bezienswaardigheden in de buurt
         </KaartKop>
       </div>
