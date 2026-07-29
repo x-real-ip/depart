@@ -485,6 +485,7 @@ export interface Bezienswaardigheid {
   categorie: string;
   afstandKm: number;
   openingstijden: string | null;
+  website: string | null;
   lat: number;
   lon: number;
 }
@@ -598,6 +599,7 @@ export async function haalBezienswaardigheden(
       categorie,
       afstandKm: afstandTussen(coordinaat, { lat, lon }),
       openingstijden: element.tags?.["opening_hours"] ?? null,
+      website: haalWebsite(element.tags),
       lat,
       lon,
     });
@@ -641,6 +643,32 @@ function topBezienswaardigheden(resultaten: Bezienswaardigheid[]): Bezienswaardi
   }
 
   return gekozen.sort((a, b) => a.afstandKm - b.afstandKm);
+}
+
+/**
+ * Website voor een plek, uit OSM-tags: eerst een echte website, anders bij
+ * gebrek daaraan het Wikipedia-artikel (musea, natuurgebieden en
+ * uitkijkpunten hebben vaak wel dat laatste). Zonder "http(s)://" ervoor
+ * plakt de browser het bij een relatieve link op de app zelf, dus die zet
+ * de app er zelf voor als dat nog niet zo is.
+ */
+function haalWebsite(tags: Record<string, string> | undefined): string | null {
+  const kandidaat = tags?.["website"] ?? tags?.["contact:website"] ?? tags?.["url"];
+  if (kandidaat !== undefined && kandidaat.trim() !== "") {
+    const trimmed = kandidaat.trim();
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  }
+
+  const wikipedia = tags?.["wikipedia"];
+  if (wikipedia !== undefined && wikipedia.trim() !== "") {
+    const [taal, ...rest] = wikipedia.split(":");
+    const artikel = rest.join(":").trim();
+    if (taal !== undefined && taal.trim() !== "" && artikel !== "") {
+      return `https://${taal.trim()}.wikipedia.org/wiki/${encodeURIComponent(artikel.replace(/ /g, "_"))}`;
+    }
+  }
+
+  return null;
 }
 
 /** Hemelsbrede afstand in kilometers (Haversine), op één decimaal. */

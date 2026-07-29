@@ -240,9 +240,7 @@ function WeerKolom({ reeks }: { reeks: WeerReeks }) {
         </p>
       </div>
       <p className="text-[11px] text-slate/70">
-        {eersteDag === null
-          ? ""
-          : `Weer voor ${isVandaag ? "vandaag" : datumKort(eersteDag.datum)} — tik een andere dag aan voor die dag.`}
+        {eersteDag === null ? "" : `Weer voor ${isVandaag ? "vandaag" : datumKort(eersteDag.datum)}`}
       </p>
       <dl className="mt-2 space-y-0.5 text-xs text-slate">
         <Regel
@@ -379,28 +377,50 @@ function BezienswaardighedenKaart({ gegevens }: { gegevens: BezienswaardighedenA
         </KaartKop>
       </div>
       <ul className="divide-y divide-slate/12">
-        {gegevens.bezienswaardigheden.map((plek, index) => (
-          <li key={`${plek.naam}-${index}`} className="flex items-start gap-3 px-4 py-2.5">
-            <span
-              className={`label-mono mt-0.5 shrink-0 rounded-full px-2 py-0.5 ${
-                POI_KLEUR[plek.categorie] ?? "bg-slate/12 text-slate"
-              }`}
-            >
-              {plek.categorie}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-ink">{plek.naam}</span>
-              {plek.openingstijden !== null && (
-                <span className="block truncate text-xs text-slate">{plek.openingstijden}</span>
+        {gegevens.bezienswaardigheden.map((plek, index) => {
+          const inhoud = (
+            <>
+              <span
+                className={`label-mono mt-0.5 shrink-0 rounded-full px-2 py-0.5 ${
+                  POI_KLEUR[plek.categorie] ?? "bg-slate/12 text-slate"
+                }`}
+              >
+                {plek.categorie}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-ink">{plek.naam}</span>
+                {plek.openingstijden !== null && (
+                  <span className="block truncate text-xs text-slate">{plek.openingstijden}</span>
+                )}
+              </span>
+              <span className="shrink-0 font-mono text-xs text-slate">
+                {plek.afstandKm < 1
+                  ? `${Math.round(plek.afstandKm * 1000)} m`
+                  : `${plek.afstandKm.toLocaleString("nl-NL")} km`}
+              </span>
+            </>
+          );
+          return (
+            <li key={`${plek.naam}-${index}`}>
+              {plek.website !== null ? (
+                <a
+                  href={plek.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`${plek.naam} — website openen`}
+                  className="flex items-start gap-3 px-4 py-2.5 transition-colors hover:bg-canvas"
+                >
+                  {inhoud}
+                  <span aria-hidden="true" className="shrink-0 self-center text-slate">
+                    ↗
+                  </span>
+                </a>
+              ) : (
+                <div className="flex items-start gap-3 px-4 py-2.5">{inhoud}</div>
               )}
-            </span>
-            <span className="shrink-0 font-mono text-xs text-slate">
-              {plek.afstandKm < 1
-                ? `${Math.round(plek.afstandKm * 1000)} m`
-                : `${plek.afstandKm.toLocaleString("nl-NL")} km`}
-            </span>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </Kaart>
   );

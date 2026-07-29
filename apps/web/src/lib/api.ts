@@ -257,6 +257,7 @@ export interface Bezienswaardigheid {
   categorie: string;
   afstandKm: number;
   openingstijden: string | null;
+  website: string | null;
   lat: number;
   lon: number;
 }
