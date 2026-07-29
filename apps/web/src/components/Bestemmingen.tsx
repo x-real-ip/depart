@@ -418,24 +418,14 @@ function BestemmingFormulier({
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-[1fr_auto] gap-2">
-        <Veld label="Plaats" verplicht ingevuld={plaats.trim() !== ""}>
-          <input
-            className={INVOER_STIJL}
-            placeholder="Metz"
-            value={plaats}
-            onChange={(event) => setPlaats(event.target.value)}
-          />
-        </Veld>
-        <Veld label="Incheck" hint="Tijd">
-          <input
-            type="time"
-            className={INVOER_STIJL}
-            value={inchecktijd}
-            onChange={(event) => setInchecktijd(event.target.value)}
-          />
-        </Veld>
-      </div>
+      <Veld label="Plaats" verplicht ingevuld={plaats.trim() !== ""}>
+        <input
+          className={INVOER_STIJL}
+          placeholder="Metz"
+          value={plaats}
+          onChange={(event) => setPlaats(event.target.value)}
+        />
+      </Veld>
 
       <Veld label="Opmerking">
         <input
@@ -526,6 +516,16 @@ function BestemmingFormulier({
                 onChange={(event) => setIncheckdatum(event.target.value)}
               />
             </Veld>
+            <Veld label="Inchecktijd">
+              <input
+                type="time"
+                className={INVOER_STIJL}
+                value={inchecktijd}
+                onChange={(event) => setInchecktijd(event.target.value)}
+              />
+            </Veld>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <Veld label="Uitcheckdatum">
               <input
                 type="date"
@@ -535,15 +535,15 @@ function BestemmingFormulier({
                 onChange={(event) => setUitcheckdatum(event.target.value)}
               />
             </Veld>
+            <Veld label="Uitchecktijd">
+              <input
+                type="time"
+                className={INVOER_STIJL}
+                value={uitchecktijd}
+                onChange={(event) => setUitchecktijd(event.target.value)}
+              />
+            </Veld>
           </div>
-          <Veld label="Uitchecktijd">
-            <input
-              type="time"
-              className={`${INVOER_STIJL} w-32`}
-              value={uitchecktijd}
-              onChange={(event) => setUitchecktijd(event.target.value)}
-            />
-          </Veld>
         </div>
       )}
 
