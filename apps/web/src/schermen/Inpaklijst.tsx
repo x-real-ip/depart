@@ -87,6 +87,22 @@ export function Inpaklijst({
     [zichtbaar],
   );
 
+  /** Percentage per lijst, zodat je op de lijstknoppen al ziet welke klaar zijn. */
+  const percentagePerLijst = useMemo(() => {
+    const totalen = new Map<string, { totaal: number; afgevinkt: number }>();
+    for (const item of items ?? []) {
+      const huidig = totalen.get(item.packListId) ?? { totaal: 0, afgevinkt: 0 };
+      huidig.totaal += 1;
+      if (item.afgevinkt) huidig.afgevinkt += 1;
+      totalen.set(item.packListId, huidig);
+    }
+    const resultaat = new Map<string, number>();
+    for (const [id, { totaal, afgevinkt }] of totalen) {
+      resultaat.set(id, Math.round((afgevinkt / totaal) * 100));
+    }
+    return resultaat;
+  }, [items]);
+
   const percentage =
     zichtbaar.length === 0
       ? 0
@@ -206,6 +222,7 @@ export function Inpaklijst({
                 setVolgordeBewerken(false);
               }}
               label={lijst.naam}
+              percentage={percentagePerLijst.get(lijst.id) ?? null}
             />
           ))}
           <button
@@ -650,10 +667,13 @@ function LijstKnop({
   actief,
   onClick,
   label,
+  percentage,
 }: {
   actief: boolean;
   onClick: () => void;
   label: string;
+  /** null = nog geen items op de lijst; anders 0-100. */
+  percentage: number | null;
 }) {
   return (
     <button
@@ -661,10 +681,16 @@ function LijstKnop({
       role="tab"
       aria-selected={actief}
       onClick={onClick}
-      className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
+      className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
         actief ? "bg-amber text-navy" : "bg-white text-slate hover:text-ink"
       }`}
     >
+      {percentage !== null && (
+        <span
+          aria-hidden="true"
+          className={`size-2 shrink-0 rounded-full ${percentage === 100 ? "bg-forest" : "bg-navy"}`}
+        />
+      )}
       {label}
     </button>
   );
