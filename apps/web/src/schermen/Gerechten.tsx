@@ -110,7 +110,7 @@ export function Gerechten({ tripId }: { tripId: string }) {
               type="button"
               role="tab"
               aria-selected={actiefId === gerecht.id}
-              onClick={() => setActiefId(gerecht.id)}
+              onClick={() => setActiefId((huidig) => (huidig === gerecht.id ? null : gerecht.id))}
               className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
                 actiefId === gerecht.id ? "bg-amber text-navy" : "bg-white text-slate hover:text-ink"
               }`}
