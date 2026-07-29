@@ -235,9 +235,19 @@ function WeerKolom({ reeks }: { reeks: WeerReeks }) {
           </span>
         )}
         <p className="font-mono text-2xl font-semibold text-ink">
-          {gemiddeldeMax === null ? "—" : `${Math.round(gemiddeldeMax)}°`}
+          {gemiddeldeMax === null ? (
+            "—"
+          ) : (
+            <>
+              <span className="text-sm font-normal text-slate">gem. </span>
+              {Math.round(gemiddeldeMax)}°
+            </>
+          )}
         </p>
       </div>
+      <p className="text-[11px] text-slate/70">
+        Dit zijn cijfers over de hele periode hieronder, niet van nu — tik een dag aan voor het precieze weer van die dag.
+      </p>
       <dl className="mt-2 space-y-0.5 text-xs text-slate">
         <Regel
           label="nacht"
