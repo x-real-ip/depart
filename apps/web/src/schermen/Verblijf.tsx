@@ -9,8 +9,10 @@ import {
   type Destination,
   type Trip,
   type WeerAntwoord,
+  type WeerDag,
   type WeerReeks,
 } from "../lib/api.ts";
+import { weerIcoon } from "../lib/format.ts";
 import { Gerechten } from "./Gerechten.tsx";
 
 /**
@@ -213,13 +215,26 @@ function WeerKolom({ reeks }: { reeks: WeerReeks }) {
   const gemiddeldeMin = gemiddelde(reeks.dagen.map((dag) => dag.minTemp));
   const hoogsteWind = maximum(reeks.dagen.map((dag) => dag.windKmh));
   const hoogsteRegen = maximum(reeks.dagen.map((dag) => dag.regenkans));
+  const algemeenBeeld = meestVoorkomendIcoon(reeks.dagen);
 
   return (
     <div className="rounded-xl bg-canvas px-3 py-3">
       <p className="label-mono text-slate">{reeks.plaats}</p>
-      <p className="mt-1 font-mono text-2xl font-semibold text-ink">
-        {gemiddeldeMax === null ? "—" : `${Math.round(gemiddeldeMax)}°`}
-      </p>
+      <div className="mt-1 flex items-center gap-2">
+        {algemeenBeeld !== null && (
+          <span
+            className="text-2xl leading-none"
+            role="img"
+            aria-label={algemeenBeeld.omschrijving}
+            title={algemeenBeeld.omschrijving}
+          >
+            {algemeenBeeld.icoon}
+          </span>
+        )}
+        <p className="font-mono text-2xl font-semibold text-ink">
+          {gemiddeldeMax === null ? "—" : `${Math.round(gemiddeldeMax)}°`}
+        </p>
+      </div>
       <dl className="mt-2 space-y-0.5 text-xs text-slate">
         <Regel
           label="nacht"
@@ -233,24 +248,47 @@ function WeerKolom({ reeks }: { reeks: WeerReeks }) {
       </dl>
 
       {/* De losse dagen, zodat je ziet of het één natte dag is of de hele week. */}
-      <ul className="mt-3 flex gap-1 overflow-x-auto pb-1">
-        {reeks.dagen.map((dag) => (
-          <li key={dag.datum} className="shrink-0 text-center">
-            <span className="label-mono block text-slate/70">{dagAfkorting(dag.datum)}</span>
-            <span className="mt-0.5 block font-mono text-xs font-semibold text-ink">
-              {dag.maxTemp === null ? "—" : Math.round(dag.maxTemp)}
-            </span>
-            <span
-              aria-hidden="true"
-              className="mx-auto mt-1 block w-4 rounded-full bg-navy/15"
-              style={{ height: `${Math.max(2, Math.round((dag.regenkans ?? 0) / 8))}px` }}
-              title={`${dag.regenkans ?? 0}% regenkans`}
-            />
-          </li>
-        ))}
+      <ul className="mt-3 flex gap-2 overflow-x-auto pb-1">
+        {reeks.dagen.map((dag) => {
+          const { icoon, omschrijving } = weerIcoon(dag.weercode);
+          return (
+            <li key={dag.datum} className="shrink-0 text-center">
+              <span className="label-mono block text-slate/70">{dagAfkorting(dag.datum)}</span>
+              <span
+                className="mt-0.5 block text-base leading-none"
+                role="img"
+                aria-label={omschrijving}
+                title={`${omschrijving}${dag.regenkans !== null ? ` · ${dag.regenkans}% regenkans` : ""}`}
+              >
+                {icoon}
+              </span>
+              <span className="mt-0.5 block font-mono text-xs font-semibold text-ink">
+                {dag.maxTemp === null ? "—" : Math.round(dag.maxTemp)}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
+}
+
+/** Welk icoon het vaakst voorkomt over de dagen heen — het algemene beeld, niet één dag. */
+function meestVoorkomendIcoon(
+  dagen: WeerDag[],
+): { icoon: string; omschrijving: string } | null {
+  const tellingen = new Map<string, { icoon: string; omschrijving: string; aantal: number }>();
+  for (const dag of dagen) {
+    const { icoon, omschrijving } = weerIcoon(dag.weercode);
+    if (dag.weercode === null) continue;
+    const huidig = tellingen.get(icoon);
+    tellingen.set(icoon, { icoon, omschrijving, aantal: (huidig?.aantal ?? 0) + 1 });
+  }
+  let beste: { icoon: string; omschrijving: string; aantal: number } | null = null;
+  for (const item of tellingen.values()) {
+    if (beste === null || item.aantal > beste.aantal) beste = item;
+  }
+  return beste;
 }
 
 function Regel({ label, waarde }: { label: string; waarde: string }) {

@@ -35,6 +35,8 @@ export interface WeerDag {
   minTemp: number | null;
   windKmh: number | null;
   regenkans: number | null;
+  /** WMO-weercode (0 = onbewolkt, 61 = regen, 95 = onweer, ...) voor een icoon. */
+  weercode: number | null;
 }
 
 export interface WeerReeks {
@@ -334,6 +336,7 @@ interface WeerAntwoord {
     temperature_2m_min: (number | null)[];
     wind_speed_10m_max: (number | null)[];
     precipitation_probability_max: (number | null)[];
+    weather_code: (number | null)[];
   };
 }
 
@@ -376,7 +379,7 @@ export async function haalWeer(
   url.searchParams.set("longitude", coordinaat.lon.toFixed(4));
   url.searchParams.set(
     "daily",
-    "temperature_2m_max,temperature_2m_min,wind_speed_10m_max,precipitation_probability_max",
+    "temperature_2m_max,temperature_2m_min,wind_speed_10m_max,precipitation_probability_max,weather_code",
   );
   url.searchParams.set("timezone", "auto");
   url.searchParams.set("start_date", startDatum);
@@ -393,6 +396,7 @@ export async function haalWeer(
     minTemp: dagelijks.temperature_2m_min[index] ?? null,
     windKmh: dagelijks.wind_speed_10m_max[index] ?? null,
     regenkans: dagelijks.precipitation_probability_max[index] ?? null,
+    weercode: dagelijks.weather_code[index] ?? null,
   }));
 
   const reeks: WeerReeks = { plaats, dagen, dektVerblijf };

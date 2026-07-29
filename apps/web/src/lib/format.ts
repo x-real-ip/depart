@@ -41,6 +41,35 @@ export function bedrag(euro: number | null): string {
   return euro.toLocaleString("nl-NL", { style: "currency", currency: "EUR" });
 }
 
+/**
+ * WMO-weercodes (zoals Open-Meteo ze teruggeeft) naar een icoon en een korte
+ * omschrijving. Groepen van codes die er in de praktijk hetzelfde uitzien
+ * (bijvoorbeeld lichte/matige/zware regen) delen één icoon.
+ */
+const WEERCODE_ICONEN: { codes: number[]; icoon: string; omschrijving: string }[] = [
+  { codes: [0], icoon: "☀️", omschrijving: "Onbewolkt" },
+  { codes: [1], icoon: "🌤️", omschrijving: "Overwegend onbewolkt" },
+  { codes: [2], icoon: "⛅", omschrijving: "Half bewolkt" },
+  { codes: [3], icoon: "☁️", omschrijving: "Bewolkt" },
+  { codes: [45, 48], icoon: "🌫️", omschrijving: "Mist" },
+  { codes: [51, 53, 55, 56, 57], icoon: "🌦️", omschrijving: "Motregen" },
+  { codes: [61, 63, 65, 66, 67, 80, 81, 82], icoon: "🌧️", omschrijving: "Regen" },
+  { codes: [71, 73, 75, 77, 85, 86], icoon: "🌨️", omschrijving: "Sneeuw" },
+  { codes: [95, 96, 99], icoon: "⛈️", omschrijving: "Onweer" },
+];
+
+const WEERCODE_NAAR_ICOON = new Map(
+  WEERCODE_ICONEN.flatMap(({ codes, icoon, omschrijving }) =>
+    codes.map((code) => [code, { icoon, omschrijving }] as const),
+  ),
+);
+
+export function weerIcoon(code: number | null): { icoon: string; omschrijving: string } {
+  return code === null
+    ? { icoon: "❔", omschrijving: "Onbekend" }
+    : (WEERCODE_NAAR_ICOON.get(code) ?? { icoon: "❔", omschrijving: "Onbekend" });
+}
+
 export function bestandsgrootte(bytes: number | null): string {
   if (bytes === null) return "";
   if (bytes < 1024) return `${bytes} B`;

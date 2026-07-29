@@ -214,6 +214,8 @@ export interface WeerDag {
   minTemp: number | null;
   windKmh: number | null;
   regenkans: number | null;
+  /** WMO-weercode (0 = onbewolkt, 61 = regen, 95 = onweer, ...) voor een icoon. */
+  weercode: number | null;
 }
 
 export interface WeerReeks {
