@@ -36,7 +36,6 @@ export function Gerechten({ tripId }: { tripId: string }) {
         if (!actueel) return;
         setGerechten(recepten);
         setIngredienten(alleIngredienten);
-        setActiefId((huidig) => huidig ?? recepten[0]?.id ?? null);
       })
       .catch((error: Error) => {
         if (actueel) setFout(error.message);
@@ -49,7 +48,7 @@ export function Gerechten({ tripId }: { tripId: string }) {
   useEffect(() => {
     if (gerechten === null) return;
     if (actiefId !== null && !gerechten.some((gerecht) => gerecht.id === actiefId)) {
-      setActiefId(gerechten[0]?.id ?? null);
+      setActiefId(null);
     }
   }, [actiefId, gerechten]);
 
