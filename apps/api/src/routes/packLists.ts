@@ -7,7 +7,7 @@ import { Fields, NotFoundError, ValidationError, pathUuid } from "../validate.js
 import { haalTrip } from "./trips.js";
 
 const PACK_LIST_KOLOMMEN = `id, trip_id, naam, traveler_id`;
-const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt, volgorde`;
+const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt, volgorde, categorie`;
 
 async function haalPackList(id: string): Promise<PackListRow> {
   const row = await queryOne<PackListRow>(
@@ -203,9 +203,15 @@ export const packListRoutes: FastifyPluginAsync = async (app) => {
     const volgorde = await volgendeVolgorde(id);
 
     const row = await queryOne<PackItemRow>(
-      `INSERT INTO pack_item (trip_id, pack_list_id, label, volgorde) VALUES ($1, $2, $3, $4)
+      `INSERT INTO pack_item (trip_id, pack_list_id, label, volgorde, categorie) VALUES ($1, $2, $3, $4, $5)
        RETURNING ${PACK_ITEM_KOLOMMEN}`,
-      [lijst.trip_id, id, fields.text("label", { max: 120 }), volgorde],
+      [
+        lijst.trip_id,
+        id,
+        fields.text("label", { max: 120 }),
+        volgorde,
+        fields.optionalText("categorie", { max: 60 }),
+      ],
     );
     reply.code(201);
     return toPackItem(row!);

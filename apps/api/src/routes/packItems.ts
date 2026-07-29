@@ -4,7 +4,7 @@ import { toPackItem, type PackItemRow } from "../types.js";
 import { Fields, NotFoundError, ValidationError, pathUuid } from "../validate.js";
 import { haalTrip } from "./trips.js";
 
-const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt, volgorde`;
+const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt, volgorde, categorie`;
 
 /**
  * Items zelf: aanmaken gaat via een lijst (zie packLists.ts,
@@ -35,11 +35,14 @@ export const packItemRoutes: FastifyPluginAsync = async (app) => {
 
     const label = fields.has("label") ? fields.text("label", { max: 120 }) : bestaand.label;
     const afgevinkt = fields.has("afgevinkt") ? fields.boolean("afgevinkt") : bestaand.afgevinkt;
+    const categorie = fields.has("categorie")
+      ? fields.optionalText("categorie", { max: 60 })
+      : bestaand.categorie;
 
     const row = await queryOne<PackItemRow>(
-      `UPDATE pack_item SET label = $2, afgevinkt = $3 WHERE id = $1
+      `UPDATE pack_item SET label = $2, afgevinkt = $3, categorie = $4 WHERE id = $1
        RETURNING ${PACK_ITEM_KOLOMMEN}`,
-      [id, label, afgevinkt],
+      [id, label, afgevinkt, categorie],
     );
     return toPackItem(row!);
   });

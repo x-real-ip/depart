@@ -128,6 +128,7 @@ export interface PackItem {
   label: string;
   afgevinkt: boolean;
   volgorde: number;
+  categorie: string | null;
 }
 
 /** Startset voor een nieuwe lijst: kampeer-basisuitrusting of persoonlijke spullen. */
@@ -498,9 +499,12 @@ export const api = {
   inpaklijstItems: {
     lijst: (tripId: string) =>
       verzoek("GET", `/api/trips/${tripId}/pack-items`) as Promise<PackItem[]>,
-    voegToe: (packListId: string, label: string) =>
-      verzoek("POST", `/api/pack-lists/${packListId}/pack-items`, { label }) as Promise<PackItem>,
-    werkBij: (id: string, velden: { label?: string; afgevinkt?: boolean }) =>
+    voegToe: (packListId: string, label: string, categorie?: string | null) =>
+      verzoek("POST", `/api/pack-lists/${packListId}/pack-items`, {
+        label,
+        categorie: categorie ?? null,
+      }) as Promise<PackItem>,
+    werkBij: (id: string, velden: { label?: string; afgevinkt?: boolean; categorie?: string | null }) =>
       verzoek("PATCH", `/api/pack-items/${id}`, velden) as Promise<PackItem>,
     verwijder: (id: string) => verzoek("DELETE", `/api/pack-items/${id}`) as Promise<null>,
     herorden: (packListId: string, ids: string[]) =>

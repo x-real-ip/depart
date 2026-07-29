@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   Bevestiging,
   IconKnop,
@@ -30,11 +30,13 @@ export function Inpaklijst({
   const [fout, setFout] = useState<string | null>(null);
   const [actieveLijstId, setActieveLijstId] = useState<string | null>(null);
   const [nieuwLabel, setNieuwLabel] = useState("");
+  const [nieuwCategorie, setNieuwCategorie] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [importTekst, setImportTekst] = useState("");
   const [importMelding, setImportMelding] = useState<string | null>(null);
   const [herschrijft, setHerschrijft] = useState<string | null>(null);
   const [herschrevenLabel, setHerschrevenLabel] = useState("");
+  const [herschrevenCategorie, setHerschrevenCategorie] = useState("");
   const [vraagWissen, setVraagWissen] = useState(false);
   const [vraagVerwijderLijst, setVraagVerwijderLijst] = useState(false);
   const [nieuweLijstOpen, setNieuweLijstOpen] = useState(false);
@@ -84,15 +86,52 @@ export function Inpaklijst({
     return term === "" ? zichtbaar : zichtbaar.filter((item) => item.label.toLowerCase().includes(term));
   }, [zichtbaar, zoekterm]);
 
-  // Afgevinkte items zakken naar onderen; de volgorde daarbinnen blijft
-  // hetzelfde, dus een item komt bij het uitvinken terug op zijn oude plek —
-  // sort() is stabiel, dus binnen elke groep blijft de bestaande volgorde
-  // behouden. Alleen voor de gewone weergave: tijdens het slepen (waar
-  // `zichtbaar` zelf voor gebruikt wordt) blijft de echte volgorde zichtbaar.
-  const weergegeven = useMemo(
-    () => [...gefilterd].sort((a, b) => Number(a.afgevinkt) - Number(b.afgevinkt)),
-    [gefilterd],
-  );
+  /** Categorieën die al ergens in deze lijst gebruikt worden, voor de invoersuggesties. */
+  const categorieSuggesties = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of zichtbaar) {
+      const naam = item.categorie?.trim();
+      if (naam) set.add(naam);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "nl"));
+  }, [zichtbaar]);
+
+  /**
+   * Items gegroepeerd per categorie, met "Overig" voor items zonder categorie —
+   * altijd als laatste groep, ongeacht wanneer die items zijn toegevoegd.
+   * Categorieën staan op volgorde van eerste voorkomen in de lijst, niet
+   * alfabetisch. Binnen elke groep zakken afgevinkte items naar onderen; net
+   * als voorheen is sort() stabiel, dus een item komt bij het uitvinken terug
+   * op zijn oude plek binnen de groep.
+   */
+  const groepen = useMemo(() => {
+    const perCategorie = new Map<string, PackItem[]>();
+    for (const item of gefilterd) {
+      const naam = item.categorie?.trim() ?? "";
+      const lijst = perCategorie.get(naam) ?? [];
+      lijst.push(item);
+      perCategorie.set(naam, lijst);
+    }
+    for (const lijst of perCategorie.values()) {
+      lijst.sort((a, b) => Number(a.afgevinkt) - Number(b.afgevinkt));
+    }
+
+    const genoemd = [...perCategorie.keys()].filter((naam) => naam !== "");
+    genoemd.sort((a, b) => {
+      const indexA = zichtbaar.findIndex((item) => (item.categorie?.trim() ?? "") === a);
+      const indexB = zichtbaar.findIndex((item) => (item.categorie?.trim() ?? "") === b);
+      return indexA - indexB;
+    });
+
+    const resultaat = genoemd.map((naam) => ({ naam, items: perCategorie.get(naam)! }));
+    const overig = perCategorie.get("");
+    if (overig !== undefined) resultaat.push({ naam: "Overig", items: overig });
+    return resultaat;
+  }, [gefilterd, zichtbaar]);
+
+  // Geen enkel item heeft een categorie: dan geen kopjes tonen, gewoon de
+  // platte lijst zoals voorheen — categorieën zijn opt-in, niet verplicht.
+  const toonGroepen = !(groepen.length === 1 && groepen[0]!.naam === "Overig");
 
   /** Percentage per lijst, zodat je op de lijstknoppen al ziet welke klaar zijn. */
   const percentagePerLijst = useMemo(() => {
@@ -196,9 +235,15 @@ export function Inpaklijst({
   async function voegToe(): Promise<void> {
     if (nieuwLabel.trim() === "" || actieveLijstId === null) return;
     await metFout(async () => {
-      const nieuw = await api.inpaklijstItems.voegToe(actieveLijstId, nieuwLabel.trim());
+      const nieuw = await api.inpaklijstItems.voegToe(
+        actieveLijstId,
+        nieuwLabel.trim(),
+        nieuwCategorie.trim() === "" ? null : nieuwCategorie.trim(),
+      );
       setItems([...(items ?? []), nieuw]);
       setNieuwLabel("");
+      // Categorie laten staan: bij een reeks items uit dezelfde categorie
+      // hoef je 'm niet steeds opnieuw te typen.
     });
   }
 
@@ -253,6 +298,7 @@ export function Inpaklijst({
                 setImportMelding(null);
                 setVolgordeBewerken(false);
                 setZoekterm("");
+                setNieuwCategorie("");
               }}
               label={lijst.naam}
               percentage={percentagePerLijst.get(lijst.id) ?? null}
@@ -529,98 +575,127 @@ export function Inpaklijst({
                           <span className="min-w-0 flex-1 truncate text-sm text-ink">
                             {item.label}
                           </span>
+                          {item.categorie !== null && (
+                            <span className="label-mono shrink-0 truncate rounded-full bg-navy/8 px-2 py-0.5 text-navy">
+                              {item.categorie}
+                            </span>
+                          )}
                         </li>
                       ))
-                  ) : weergegeven.length === 0 ? (
+                  ) : gefilterd.length === 0 ? (
                     <li className="px-4 py-6 text-center text-sm text-slate">
                       Niets gevonden voor "{zoekterm.trim()}".
                     </li>
                   ) : (
-                    weergegeven.map((item) => (
-                    <li key={item.id} className="flex items-center gap-2 px-2 py-1">
-                      {herschrijft === item.id ? (
-                        <div className="flex w-full items-center gap-2 py-1.5">
-                          <input
-                            className={INVOER_STIJL}
-                            value={herschrevenLabel}
-                            onChange={(event) => setHerschrevenLabel(event.target.value)}
-                            aria-label="Nieuwe naam voor dit item"
-                            autoFocus
-                          />
-                          <Knop
-                            soort="primair"
-                            disabled={bezig || herschrevenLabel.trim() === ""}
-                            onClick={() =>
-                              void metFout(async () => {
-                                const bijgewerkt = await api.inpaklijstItems.werkBij(item.id, {
-                                  label: herschrevenLabel.trim(),
-                                });
-                                setItems(
-                                  (items ?? []).map((r) => (r.id === item.id ? bijgewerkt : r)),
-                                );
-                                setHerschrijft(null);
-                              })
-                            }
-                          >
-                            Opslaan
-                          </Knop>
-                          <Knop soort="stil" onClick={() => setHerschrijft(null)}>
-                            Terug
-                          </Knop>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => void wisselAfvinken(item)}
-                            aria-pressed={item.afgevinkt}
-                            className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-canvas"
-                          >
-                            <span
-                              aria-hidden="true"
-                              className={`flex size-5 shrink-0 items-center justify-center rounded-md border-2 text-xs font-bold ${
-                                item.afgevinkt
-                                  ? "border-forest bg-forest text-white"
-                                  : "border-slate/35 text-transparent"
-                              }`}
-                            >
-                              ✓
-                            </span>
-                            <span
-                              className={`truncate text-sm ${
-                                item.afgevinkt ? "text-slate line-through" : "text-ink"
-                              }`}
-                            >
-                              {item.label}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHerschrijft(item.id);
-                              setHerschrevenLabel(item.label);
-                            }}
-                            aria-label={`${item.label} herschrijven`}
-                            className="shrink-0 rounded-lg px-2 py-2 text-xs text-slate hover:bg-canvas hover:text-ink"
-                          >
-                            Herschrijf
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void metFout(async () => {
-                                await api.inpaklijstItems.verwijder(item.id);
-                                setItems((items ?? []).filter((r) => r.id !== item.id));
-                              })
-                            }
-                            aria-label={`${item.label} verwijderen`}
-                            className="shrink-0 rounded-lg px-2 py-2 text-xs text-slate hover:bg-alert/8 hover:text-alert"
-                          >
-                            Weg
-                          </button>
-                        </>
-                      )}
-                    </li>
+                    groepen.map((groep) => (
+                      <Fragment key={groep.naam}>
+                        {toonGroepen && (
+                          <li className="bg-canvas px-4 py-1.5">
+                            <span className="label-mono text-slate">{groep.naam}</span>
+                          </li>
+                        )}
+                        {groep.items.map((item) => (
+                          <li key={item.id} className="flex items-center gap-2 px-2 py-1">
+                            {herschrijft === item.id ? (
+                              <div className="flex w-full flex-col gap-2 py-1.5">
+                                <input
+                                  className={INVOER_STIJL}
+                                  value={herschrevenLabel}
+                                  onChange={(event) => setHerschrevenLabel(event.target.value)}
+                                  aria-label="Nieuwe naam voor dit item"
+                                  autoFocus
+                                />
+                                <input
+                                  className={INVOER_STIJL}
+                                  value={herschrevenCategorie}
+                                  onChange={(event) => setHerschrevenCategorie(event.target.value)}
+                                  aria-label="Categorie van dit item"
+                                  placeholder="Categorie (optioneel)"
+                                  list="categorie-suggesties"
+                                />
+                                <div className="flex gap-2">
+                                  <Knop
+                                    soort="primair"
+                                    disabled={bezig || herschrevenLabel.trim() === ""}
+                                    onClick={() =>
+                                      void metFout(async () => {
+                                        const bijgewerkt = await api.inpaklijstItems.werkBij(item.id, {
+                                          label: herschrevenLabel.trim(),
+                                          categorie:
+                                            herschrevenCategorie.trim() === ""
+                                              ? null
+                                              : herschrevenCategorie.trim(),
+                                        });
+                                        setItems(
+                                          (items ?? []).map((r) => (r.id === item.id ? bijgewerkt : r)),
+                                        );
+                                        setHerschrijft(null);
+                                      })
+                                    }
+                                  >
+                                    Opslaan
+                                  </Knop>
+                                  <Knop soort="stil" onClick={() => setHerschrijft(null)}>
+                                    Terug
+                                  </Knop>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => void wisselAfvinken(item)}
+                                  aria-pressed={item.afgevinkt}
+                                  className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-canvas"
+                                >
+                                  <span
+                                    aria-hidden="true"
+                                    className={`flex size-5 shrink-0 items-center justify-center rounded-md border-2 text-xs font-bold ${
+                                      item.afgevinkt
+                                        ? "border-forest bg-forest text-white"
+                                        : "border-slate/35 text-transparent"
+                                    }`}
+                                  >
+                                    ✓
+                                  </span>
+                                  <span
+                                    className={`truncate text-sm ${
+                                      item.afgevinkt ? "text-slate line-through" : "text-ink"
+                                    }`}
+                                  >
+                                    {item.label}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setHerschrijft(item.id);
+                                    setHerschrevenLabel(item.label);
+                                    setHerschrevenCategorie(item.categorie ?? "");
+                                  }}
+                                  aria-label={`${item.label} herschrijven`}
+                                  className="shrink-0 rounded-lg px-2 py-2 text-xs text-slate hover:bg-canvas hover:text-ink"
+                                >
+                                  Herschrijf
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void metFout(async () => {
+                                      await api.inpaklijstItems.verwijder(item.id);
+                                      setItems((items ?? []).filter((r) => r.id !== item.id));
+                                    })
+                                  }
+                                  aria-label={`${item.label} verwijderen`}
+                                  className="shrink-0 rounded-lg px-2 py-2 text-xs text-slate hover:bg-alert/8 hover:text-alert"
+                                >
+                                  Weg
+                                </button>
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </Fragment>
                     ))
                   )}
                 </ul>
@@ -628,14 +703,28 @@ export function Inpaklijst({
             )}
 
             {/* Item toevoegen. Geen <form>: een onClick-handler doet het werk. */}
-            <Kaart>
+            <Kaart className="space-y-2">
+              <input
+                className={INVOER_STIJL}
+                placeholder="Wat moet er nog bij?"
+                value={nieuwLabel}
+                aria-label="Nieuw item"
+                onChange={(event) => setNieuwLabel(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && nieuwLabel.trim() !== "") {
+                    event.preventDefault();
+                    void voegToe();
+                  }
+                }}
+              />
               <div className="flex gap-2">
                 <input
-                  className={INVOER_STIJL}
-                  placeholder="Wat moet er nog bij?"
-                  value={nieuwLabel}
-                  aria-label="Nieuw item"
-                  onChange={(event) => setNieuwLabel(event.target.value)}
+                  className={`${INVOER_STIJL} flex-1`}
+                  placeholder="Categorie (optioneel), bijv. Kleding"
+                  value={nieuwCategorie}
+                  aria-label="Categorie van dit item"
+                  list="categorie-suggesties"
+                  onChange={(event) => setNieuwCategorie(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && nieuwLabel.trim() !== "") {
                       event.preventDefault();
@@ -647,6 +736,11 @@ export function Inpaklijst({
                   Voeg toe
                 </Knop>
               </div>
+              <datalist id="categorie-suggesties">
+                {categorieSuggesties.map((naam) => (
+                  <option key={naam} value={naam} />
+                ))}
+              </datalist>
             </Kaart>
 
             {/* Een bestaande lijst importeren: plak 'm, één item per regel. */}

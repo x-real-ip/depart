@@ -57,6 +57,7 @@ export interface PackItemRow {
   label: string;
   afgevinkt: boolean;
   volgorde: number;
+  categorie: string | null;
 }
 
 /** Een zelfgekozen takenlijst, optioneel bij één reiziger — los van de inpaklijsten. */
@@ -175,6 +176,7 @@ export function toPackItem(row: PackItemRow) {
     label: row.label,
     afgevinkt: row.afgevinkt,
     volgorde: row.volgorde,
+    categorie: row.categorie,
   };
 }
 
