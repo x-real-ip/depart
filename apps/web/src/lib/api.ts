@@ -349,15 +349,6 @@ export interface Contact {
   telefoonnummer: string;
 }
 
-/** Eén regel op de checklist reisdocumenten: paspoort, rijbewijs, en zo. */
-export interface Requirement {
-  id: string;
-  tripId: string;
-  label: string;
-  afgevinkt: boolean;
-  volgorde: number;
-}
-
 export interface Voortgang {
   totaal: number;
   afgevinkt: number;
@@ -614,17 +605,6 @@ export const api = {
     werkBij: (id: string, velden: { label?: string; telefoonnummer?: string }) =>
       verzoek("PATCH", `/api/contacts/${id}`, velden) as Promise<Contact>,
     verwijder: (id: string) => verzoek("DELETE", `/api/contacts/${id}`) as Promise<null>,
-  },
-
-  /** De checklist reisdocumenten: paspoort, rijbewijs, reisverzekering, en zo. */
-  vereisten: {
-    lijst: (tripId: string) =>
-      verzoek("GET", `/api/trips/${tripId}/requirements`) as Promise<Requirement[]>,
-    voegToe: (tripId: string, label: string) =>
-      verzoek("POST", `/api/trips/${tripId}/requirements`, { label }) as Promise<Requirement>,
-    werkBij: (id: string, velden: { label?: string; afgevinkt?: boolean }) =>
-      verzoek("PATCH", `/api/requirements/${id}`, velden) as Promise<Requirement>,
-    verwijder: (id: string) => verzoek("DELETE", `/api/requirements/${id}`) as Promise<null>,
   },
 
   /** Gerechten voor op de camping: een naam en ingrediënten die je naar een inpaklijst kunt sturen. */

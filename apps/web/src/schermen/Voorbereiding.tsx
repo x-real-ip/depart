@@ -3,24 +3,21 @@ import type { Traveler } from "../lib/api.ts";
 import { Documenten } from "./Documenten.tsx";
 import { Gerechten } from "./Gerechten.tsx";
 import { Inpaklijst } from "./Inpaklijst.tsx";
-import { Reisdocumenten } from "./Reisdocumenten.tsx";
 import { Taken } from "./Taken.tsx";
 
-export type VoorbereidingSubtab = "documenten" | "inpaklijst" | "taken" | "gerechten" | "reisdocumenten";
+export type VoorbereidingSubtab = "documenten" | "inpaklijst" | "taken" | "gerechten";
 
 const SUBTABS: { id: VoorbereidingSubtab; label: string }[] = [
   { id: "documenten", label: "Documenten" },
   { id: "inpaklijst", label: "Inpaklijst" },
   { id: "taken", label: "Taken" },
   { id: "gerechten", label: "Gerechten" },
-  { id: "reisdocumenten", label: "Reisdocumenten" },
 ];
 
 /**
  * Alles wat er vóór vertrek geregeld moet worden, gebundeld onder één tab:
- * documenten, inpakken, losse taken, gerechten en de reisdocumentenchecklist.
- * Een eigen rij subtabs erin, zodat het hoofdmenu niet met vijf losse tabs
- * vervuild raakt.
+ * documenten, inpakken, losse taken en gerechten. Een eigen rij subtabs erin,
+ * zodat het hoofdmenu niet met losse tabs vervuild raakt.
  */
 export function Voorbereiding({
   tripId,
@@ -60,7 +57,6 @@ export function Voorbereiding({
       {subtab === "inpaklijst" && <Inpaklijst tripId={tripId} reizigers={reizigers} />}
       {subtab === "taken" && <Taken tripId={tripId} reizigers={reizigers} />}
       {subtab === "gerechten" && <Gerechten tripId={tripId} />}
-      {subtab === "reisdocumenten" && <Reisdocumenten tripId={tripId} />}
     </div>
   );
 }
