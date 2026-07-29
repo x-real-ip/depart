@@ -43,6 +43,8 @@ export function Inpaklijst({
   const [lijstNaamInvoer, setLijstNaamInvoer] = useState("");
   const [volgordeBewerken, setVolgordeBewerken] = useState(false);
   const [gesleept, setGesleept] = useState<string | null>(null);
+  const [zoekterm, setZoekterm] = useState("");
+  const [sorteerAlfabetisch, setSorteerAlfabetisch] = useState(false);
   const [bezig, setBezig] = useState(false);
 
   useEffect(() => {
@@ -77,15 +79,23 @@ export function Inpaklijst({
     [items, actieveLijstId],
   );
 
+  const gefilterd = useMemo(() => {
+    const term = zoekterm.trim().toLowerCase();
+    return term === "" ? zichtbaar : zichtbaar.filter((item) => item.label.toLowerCase().includes(term));
+  }, [zichtbaar, zoekterm]);
+
   // Afgevinkte items zakken naar onderen; de volgorde daarbinnen blijft
   // hetzelfde, dus een item komt bij het uitvinken terug op zijn oude plek —
   // sort() is stabiel, dus binnen elke groep blijft de bestaande volgorde
-  // behouden. Alleen voor de gewone weergave: tijdens het slepen (waar
-  // `zichtbaar` zelf voor gebruikt wordt) blijft de echte volgorde zichtbaar.
-  const weergegeven = useMemo(
-    () => [...zichtbaar].sort((a, b) => Number(a.afgevinkt) - Number(b.afgevinkt)),
-    [zichtbaar],
-  );
+  // (of, met alfabetisch aan, de alfabetische volgorde) behouden. Alleen voor
+  // de gewone weergave: tijdens het slepen (waar `zichtbaar` zelf voor
+  // gebruikt wordt) blijft de echte, opgeslagen volgorde zichtbaar.
+  const weergegeven = useMemo(() => {
+    const basis = sorteerAlfabetisch
+      ? [...gefilterd].sort((a, b) => a.label.localeCompare(b.label, "nl"))
+      : gefilterd;
+    return [...basis].sort((a, b) => Number(a.afgevinkt) - Number(b.afgevinkt));
+  }, [gefilterd, sorteerAlfabetisch]);
 
   /** Percentage per lijst, zodat je op de lijstknoppen al ziet welke klaar zijn. */
   const percentagePerLijst = useMemo(() => {
@@ -220,6 +230,7 @@ export function Inpaklijst({
                 setActieveLijstId(lijst.id);
                 setImportMelding(null);
                 setVolgordeBewerken(false);
+                setZoekterm("");
               }}
               label={lijst.naam}
               percentage={percentagePerLijst.get(lijst.id) ?? null}
@@ -409,22 +420,50 @@ export function Inpaklijst({
             ) : (
               <Kaart className="p-0">
                 {zichtbaar.length > 1 && (
-                  <div className="flex items-center justify-between px-4 pt-3 pb-1">
-                    <span className="label-mono text-slate">
-                      {volgordeBewerken ? "Versleep om te sorteren" : "Items"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setVolgordeBewerken(!volgordeBewerken)}
-                      className="text-xs font-semibold text-slate underline decoration-slate/40 underline-offset-2 hover:text-ink"
-                    >
-                      {volgordeBewerken ? "Klaar" : "Volgorde aanpassen"}
-                    </button>
+                  <div className="px-4 pt-3 pb-1">
+                    {!volgordeBewerken && (
+                      <div className="mb-2 flex items-center gap-2">
+                        <input
+                          type="search"
+                          className={`${INVOER_STIJL} flex-1`}
+                          placeholder="Zoeken…"
+                          value={zoekterm}
+                          onChange={(event) => setZoekterm(event.target.value)}
+                          aria-label="Zoek in deze lijst"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setSorteerAlfabetisch((huidig) => !huidig)}
+                          aria-pressed={sorteerAlfabetisch}
+                          className={`shrink-0 rounded-lg border px-2.5 py-2 text-xs font-semibold ${
+                            sorteerAlfabetisch
+                              ? "border-navy bg-navy text-canvas"
+                              : "border-slate/25 text-slate hover:border-slate/50 hover:text-ink"
+                          }`}
+                        >
+                          A–Z
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="label-mono text-slate">
+                        {volgordeBewerken ? "Versleep om te sorteren" : "Items"}
+                      </span>
+                      {(volgordeBewerken || zoekterm.trim() === "") && (
+                        <button
+                          type="button"
+                          onClick={() => setVolgordeBewerken(!volgordeBewerken)}
+                          className="text-xs font-semibold text-slate underline decoration-slate/40 underline-offset-2 hover:text-ink"
+                        >
+                          {volgordeBewerken ? "Klaar" : "Volgorde aanpassen"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
                 <ul className="divide-y divide-slate/12">
-                  {volgordeBewerken
-                    ? zichtbaar.map((item) => (
+                  {volgordeBewerken ? (
+                    zichtbaar.map((item) => (
                         <li
                           key={item.id}
                           draggable
@@ -448,7 +487,12 @@ export function Inpaklijst({
                           </span>
                         </li>
                       ))
-                    : weergegeven.map((item) => (
+                  ) : weergegeven.length === 0 ? (
+                    <li className="px-4 py-6 text-center text-sm text-slate">
+                      Niets gevonden voor "{zoekterm.trim()}".
+                    </li>
+                  ) : (
+                    weergegeven.map((item) => (
                     <li key={item.id} className="flex items-center gap-2 px-2 py-1">
                       {herschrijft === item.id ? (
                         <div className="flex w-full items-center gap-2 py-1.5">
@@ -533,7 +577,8 @@ export function Inpaklijst({
                         </>
                       )}
                     </li>
-                  ))}
+                    ))
+                  )}
                 </ul>
               </Kaart>
             )}
