@@ -179,6 +179,15 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
       ? 0
       : Math.round((vereisten.filter((item) => item.afgevinkt).length / vereisten.length) * 100);
 
+  // Afgevinkte items zakken naar onderen; de volgorde daarbinnen blijft
+  // hetzelfde, dus een item komt bij het uitvinken terug op zijn oude plek —
+  // de eigenlijke volgorde in de data verandert hier niet, alleen de
+  // weergave. Array.prototype.sort is stabiel, dus binnen elke groep blijft
+  // de bestaande volgorde behouden.
+  const vereistenWeergegeven = [...vereisten].sort(
+    (a, b) => Number(a.afgevinkt) - Number(b.afgevinkt),
+  );
+
   // Landen waar je doorheen rijdt of verblijft, op volgorde van de eerste
   // bestemming waar dat land bij hoort — een reis kan door meerdere landen gaan.
   const landen = [
@@ -338,7 +347,7 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
             )}
             {vereisten.length > 0 && (
               <ul className="-mx-1 mb-3 divide-y divide-slate/12">
-                {vereisten.map((item) => (
+                {vereistenWeergegeven.map((item) => (
                   <li key={item.id} className="flex items-center gap-2">
                     <button
                       type="button"

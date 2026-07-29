@@ -78,6 +78,16 @@ export function Taken({
     [items, actieveLijstId],
   );
 
+  // Afgevinkte taken zakken naar onderen; de volgorde daarbinnen blijft
+  // hetzelfde, dus een taak komt bij het uitvinken terug op zijn oude plek —
+  // sort() is stabiel, dus binnen elke groep blijft de bestaande volgorde
+  // behouden. Alleen voor de gewone weergave: tijdens het slepen (waar
+  // `zichtbaar` zelf voor gebruikt wordt) blijft de echte volgorde zichtbaar.
+  const weergegeven = useMemo(
+    () => [...zichtbaar].sort((a, b) => Number(a.afgevinkt) - Number(b.afgevinkt)),
+    [zichtbaar],
+  );
+
   const percentage =
     zichtbaar.length === 0
       ? 0
@@ -403,7 +413,7 @@ export function Taken({
                           </span>
                         </li>
                       ))
-                    : zichtbaar.map((item) => (
+                    : weergegeven.map((item) => (
                         <li key={item.id} className="flex items-center gap-2 px-2 py-1">
                           {herschrijft === item.id ? (
                             <div className="flex w-full items-center gap-2 py-1.5">
