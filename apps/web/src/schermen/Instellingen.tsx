@@ -25,7 +25,7 @@ const AUTOSAVE_VERTRAGING_MS = 700;
  *
  * Elk veld hier bewaart zichzelf: geen aparte knop, geen twijfel of een
  * wijziging al is opgeslagen. Afstand, rijtijd en tolkosten staan er expres
- * niet meer bij — die berekent de app zelf, op het tabblad Onderweg.
+ * niet meer bij — die berekent de app zelf, op het tabblad Heenreis.
  */
 export function Instellingen({
   trip,

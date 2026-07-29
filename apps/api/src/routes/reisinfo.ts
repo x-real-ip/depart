@@ -59,6 +59,21 @@ function metRol(punten: { naam: string; coordinaat: Coordinaat }[]): RoutePunt[]
   }));
 }
 
+/**
+ * Zelfde als metRol, maar voor de terugreis: de punten zijn dan al omgedraaid
+ * (eindbestemming eerst, thuis laatst), en de rollen draaien mee — thuis blijft
+ * altijd navy en de bestemming altijd forest op de kaart, ongeacht de
+ * rijrichting.
+ */
+function metRolOmgekeerd(punten: { naam: string; coordinaat: Coordinaat }[]): RoutePunt[] {
+  return punten.map((punt, index) => ({
+    naam: punt.naam,
+    rol: index === punten.length - 1 ? "thuis" : index === 0 ? "bestemming" : "onderweg",
+    lat: punt.coordinaat.lat,
+    lon: punt.coordinaat.lon,
+  }));
+}
+
 async function coordinaatVanThuis(trip: TripRow): Promise<CoordinaatUitkomst> {
   if (trip.thuisplaats === null) return { fout: "niet-gevonden" };
   if (trip.thuis_lat !== null && trip.thuis_lon !== null) {
@@ -360,6 +375,88 @@ export const reisinfoRoutes: FastifyPluginAsync = async (app) => {
       afstandKm: bijgewerkt.rows[0]?.afstand_km ?? null,
       rijtijdMin: bijgewerkt.rows[0]?.rijtijd_min ?? null,
     };
+  });
+
+  // --- Terugreis -------------------------------------------------------------
+  //
+  // Dezelfde punten als de heenreis, maar omgedraaid: van de eindbestemming
+  // terug naar huis. Er zijn geen apart ingevoerde tussenstops voor de
+  // terugweg — de app neemt aan dat je hetzelfde traject terug rijdt, en
+  // berekent daarvoor een eigen route, verkeersinformatie en tolschatting
+  // (OSRM en TomTom kunnen voor de omgekeerde richting een andere weg
+  // teruggeven, bijvoorbeeld door eenrichtingsverkeer).
+
+  app.get("/trips/:id/terugreis/route", async (request) => {
+    const id = pathUuid((request.params as { id?: string }).id);
+    const trip = await haalTrip(id);
+
+    const leeg = (waarom: Reden) => ({
+      route: null as RouteInfo | null,
+      reden: waarom,
+      punten: [] as RoutePunt[],
+    });
+
+    const opbouw = await routePunten(trip);
+    if ("fout" in opbouw) return leeg(opbouw.fout);
+
+    const omgekeerd = [...opbouw.punten].reverse();
+    const punten = metRolOmgekeerd(omgekeerd);
+    const route = await haalRoute(omgekeerd);
+    if (route === null) {
+      return { route: null, reden: "dienst-onbereikbaar" satisfies Reden, punten };
+    }
+
+    return {
+      route,
+      reden: "ok" satisfies Reden,
+      onderweg: omgekeerd.length - 2,
+      punten,
+    };
+  });
+
+  app.get("/trips/:id/terugreis/verkeer", async (request) => {
+    const id = pathUuid((request.params as { id?: string }).id);
+    const trip = await haalTrip(id);
+
+    const leeg = (waarom: Reden) => ({ incidenten: [] as VerkeersIncident[], reden: waarom });
+
+    if (!config.extern.enabled) return leeg("uitgeschakeld");
+    if (config.tomtom.apiKey === "") return leeg("geen-sleutel");
+
+    const opbouw = await routePunten(trip);
+    if ("fout" in opbouw) return leeg(opbouw.fout);
+
+    const omgekeerd = [...opbouw.punten].reverse();
+    const route = await haalRoute(omgekeerd);
+    if (route === null || route.geometrie.length === 0) return leeg("dienst-onbereikbaar");
+
+    // De teldatum voor hoe vers dit moet zijn is hier de terugdatum, niet de
+    // vertrekdatum: pas als die nadert (of je bent al onderweg terug) heeft
+    // verse verkeersinfo voor de terugweg zin.
+    const ttlMinuten = verkeerCacheMinuten(trip.terugdatum, trip.terugdatum);
+    const incidenten = await haalVerkeer(route.geometrie, ttlMinuten);
+    if (incidenten === null) return leeg("dienst-onbereikbaar");
+
+    return { incidenten, reden: "ok" satisfies Reden };
+  });
+
+  app.get("/trips/:id/terugreis/tol", async (request) => {
+    const id = pathUuid((request.params as { id?: string }).id);
+    const trip = await haalTrip(id);
+
+    const leeg = (waarom: Reden) => ({ schatting: null as TolSchatting | null, reden: waarom });
+
+    if (!config.extern.enabled) return leeg("uitgeschakeld");
+    if (config.tomtom.apiKey === "") return leeg("geen-sleutel");
+
+    const opbouw = await routePunten(trip);
+    if ("fout" in opbouw) return leeg(opbouw.fout);
+
+    const omgekeerd = [...opbouw.punten].reverse();
+    const schatting = await haalTolSchatting(omgekeerd);
+    if (schatting === null) return leeg("dienst-onbereikbaar");
+
+    return { schatting, reden: "ok" satisfies Reden };
   });
 };
 

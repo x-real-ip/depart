@@ -1,31 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { Laden, Melding } from "./components/ui.tsx";
 import { APP_TITLE, api, type Trip, type TripMetReizigers } from "./lib/api.ts";
-import { Documenten } from "./schermen/Documenten.tsx";
-import { Gerechten } from "./schermen/Gerechten.tsx";
-import { Inpaklijst } from "./schermen/Inpaklijst.tsx";
+import { Heenreis } from "./schermen/Heenreis.tsx";
 import { Instellingen } from "./schermen/Instellingen.tsx";
-import { Onderweg } from "./schermen/Onderweg.tsx";
 import { Overzicht } from "./schermen/Overzicht.tsx";
 import { ReisAanmaken } from "./schermen/ReisAanmaken.tsx";
-import { Taken } from "./schermen/Taken.tsx";
+import { Terugreis } from "./schermen/Terugreis.tsx";
+import { Verblijf } from "./schermen/Verblijf.tsx";
+import { Voorbereiding, type VoorbereidingSubtab } from "./schermen/Voorbereiding.tsx";
 
-export type Tab =
-  | "overzicht"
-  | "documenten"
-  | "inpaklijst"
-  | "taken"
-  | "gerechten"
-  | "onderweg"
-  | "instellingen";
+export type Tab = "overzicht" | "voorbereiding" | "heenreis" | "verblijf" | "terugreis" | "instellingen";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overzicht", label: "Overzicht" },
-  { id: "documenten", label: "Documenten" },
-  { id: "inpaklijst", label: "Inpaklijst" },
-  { id: "taken", label: "Taken" },
-  { id: "gerechten", label: "Gerechten" },
-  { id: "onderweg", label: "Onderweg" },
+  { id: "voorbereiding", label: "Voorbereiding" },
+  { id: "heenreis", label: "Heenreis" },
+  { id: "verblijf", label: "Verblijf" },
+  { id: "terugreis", label: "Terugreis" },
 ];
 
 /** Onthoudt welke reis je het laatst bekeek. */
@@ -35,8 +26,17 @@ export function App() {
   const [reizen, setReizen] = useState<Trip[] | null>(null);
   const [actieveReis, setActieveReis] = useState<TripMetReizigers | null>(null);
   const [tab, setTab] = useState<Tab>("overzicht");
+  // Op welke subtab Voorbereiding opent — alleen relevant zolang die tab
+  // actief is; verandert niet vanuit de subtabs zelf, alleen via gaNaar.
+  const [voorbereidingSubtab, setVoorbereidingSubtab] = useState<VoorbereidingSubtab>("documenten");
   const [maaktNieuweReis, setMaaktNieuweReis] = useState(false);
   const [fout, setFout] = useState<string | null>(null);
+
+  /** Naar een tab, en eventueel meteen naar een subtab van Voorbereiding. */
+  function gaNaar(nieuweTab: Tab, subtab?: VoorbereidingSubtab): void {
+    setTab(nieuweTab);
+    if (subtab !== undefined) setVoorbereidingSubtab(subtab);
+  }
 
   /** Haalt de lijst reizen op en kiest er een om te tonen. */
   const laadReizen = useCallback(async (voorkeurId?: string) => {
@@ -172,7 +172,7 @@ export function App() {
         </div>
       )}
 
-      {/* Tabbladen. */}
+      {/* Tabbladen: de reisfases, gebundeld in plaats van elk onderdeel los. */}
       <nav className="mb-4" aria-label="Onderdelen">
         <ul className="flex gap-1.5 overflow-x-auto pb-1">
           {TABS.map((item) => (
@@ -192,20 +192,21 @@ export function App() {
         </ul>
       </nav>
 
-      {tab === "overzicht" && (
-        <Overzicht trip={actieveReis} gaNaar={setTab} />
+      {tab === "overzicht" && <Overzicht trip={actieveReis} gaNaar={gaNaar} />}
+      {tab === "voorbereiding" && (
+        <Voorbereiding
+          tripId={actieveReis.id}
+          reizigers={actieveReis.reizigers}
+          initieleSubtab={voorbereidingSubtab}
+        />
       )}
-      {tab === "documenten" && (
-        <Documenten tripId={actieveReis.id} reizigers={actieveReis.reizigers} />
+      {tab === "heenreis" && (
+        <Heenreis trip={actieveReis} onTripGewijzigd={() => void herlaadActieveReis()} />
       )}
-      {tab === "inpaklijst" && (
-        <Inpaklijst tripId={actieveReis.id} reizigers={actieveReis.reizigers} />
+      {tab === "verblijf" && (
+        <Verblijf trip={actieveReis} onNaarInstellingen={() => setTab("instellingen")} />
       )}
-      {tab === "taken" && <Taken tripId={actieveReis.id} reizigers={actieveReis.reizigers} />}
-      {tab === "gerechten" && <Gerechten tripId={actieveReis.id} />}
-      {tab === "onderweg" && (
-        <Onderweg trip={actieveReis} onTripGewijzigd={() => void herlaadActieveReis()} />
-      )}
+      {tab === "terugreis" && <Terugreis trip={actieveReis} />}
       {tab === "instellingen" && (
         <Instellingen
           trip={actieveReis}

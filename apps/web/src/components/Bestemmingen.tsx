@@ -21,7 +21,7 @@ import { BEKENDE_LANDEN, datumKort } from "../lib/format.ts";
  * lijst is de eindbestemming van de reis.
  *
  * Gedeeld tussen de instellingen (waar je de reis compleet maakt) en het
- * tabblad Onderweg (waar je een bestemming onderweg toevoegt) — het is
+ * tabblad Heenreis (waar je een bestemming onderweg toevoegt) — het is
  * dezelfde lijst, gewoon op twee plekken te beheren.
  */
 export function Bestemmingen({

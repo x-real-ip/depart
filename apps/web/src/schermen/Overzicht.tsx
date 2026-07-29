@@ -1,39 +1,33 @@
 import { useEffect, useState } from "react";
 import { SplitFlapAftelklok } from "../components/SplitFlap.tsx";
-import { Kaart, KaartKop, Knop, Laden, Melding, VoortgangsBalk } from "../components/ui.tsx";
+import { Kaart, Laden, Melding, VoortgangsBalk } from "../components/ui.tsx";
 import {
-  REDEN_KORT,
-  REDEN_TEKST,
   api,
   type Destination,
   type Overzicht as OverzichtGegevens,
   type Requirement,
   type RouteAntwoord,
   type TripMetReizigers,
-  type WeerAntwoord,
-  type WeerReeks,
 } from "../lib/api.ts";
-import { afstand, dagenTot, datumKort, rijtijd, verplichtInDeAuto } from "../lib/format.ts";
+import { afstand, dagenTot, datumKort, verplichtInDeAuto } from "../lib/format.ts";
 import type { Tab } from "../App.tsx";
+import type { VoorbereidingSubtab } from "./Voorbereiding.tsx";
 
 /**
  * Het overzicht beantwoordt de vraag "ben ik klaar om te vertrekken?" en niets
- * anders. De statusregels zijn knoppen naar het bijbehorende tabblad.
- *
- * Weer en route komen van buiten en kunnen ontbreken. Het scherm laat dan zien
- * waarom, en blijft verder gewoon werken.
+ * anders. De statusregels zijn knoppen naar het bijbehorende tabblad. Details
+ * over de kampeerplek, het weer en de route staan bij Verblijf en Heenreis.
  */
 export function Overzicht({
   trip,
   gaNaar,
 }: {
   trip: TripMetReizigers;
-  gaNaar: (tab: Tab) => void;
+  gaNaar: (tab: Tab, subtab?: VoorbereidingSubtab) => void;
 }) {
   const [gegevens, setGegevens] = useState<OverzichtGegevens | null>(null);
   const [bestemmingen, setBestemmingen] = useState<Destination[] | null>(null);
   const [vereisten, setVereisten] = useState<Requirement[] | null>(null);
-  const [weer, setWeer] = useState<WeerAntwoord | null>(null);
   const [route, setRoute] = useState<RouteAntwoord | null>(null);
   const [fout, setFout] = useState<string | null>(null);
 
@@ -61,15 +55,11 @@ export function Overzicht({
     };
   }, [trip.id]);
 
-  // Weer en route apart: die mogen langer duren en het scherm hoeft er niet op
-  // te wachten.
+  // De route apart: die mag langer duren en het scherm hoeft er niet op te
+  // wachten, dit is alleen nodig voor de afstand in het vertrekbord.
   useEffect(() => {
     let actueel = true;
-    setWeer(null);
     setRoute(null);
-    void api.reisinfo.weer(trip.id).then((r) => {
-      if (actueel) setWeer(r);
-    });
     void api.reisinfo.route(trip.id).then((r) => {
       if (actueel) setRoute(r);
     });
@@ -135,8 +125,8 @@ export function Overzicht({
         </div>
       </header>
 
-      {/* Vertrekstatus: het eerste wat je ziet, boven het weer — dit is de
-          vraag waar het hele scherm om draait. */}
+      {/* Vertrekstatus: het eerste wat je ziet — dit is de vraag waar het
+          hele scherm om draait. */}
       <VertrekstatusKaart
         documenten={documenten}
         inpaklijsten={inpaklijsten}
@@ -146,41 +136,6 @@ export function Overzicht({
         landen={landen}
         gaNaar={gaNaar}
       />
-
-      {/* Op desktop naast elkaar: links de plek en het weer, rechts de route. */}
-      <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
-        <div className="space-y-4">
-          <Kaart className="border-forest/25 bg-forest/5">
-            <KaartKop>Kampeerplek</KaartKop>
-            {eindbestemming === null ? (
-              <p className="text-sm text-slate">Nog geen bestemming ingevuld.</p>
-            ) : (
-              <>
-                <p className="font-display text-xl font-extrabold text-forest">
-                  {eindbestemming.naam ?? eindbestemming.plaats}
-                </p>
-                <dl className="mt-3 grid grid-cols-3 gap-3">
-                  <Gegeven label="regio" waarde={eindbestemming.regio ?? eindbestemming.land ?? "—"} />
-                  <Gegeven label="plaats" waarde={eindbestemming.plaatsnummer ?? "—"} />
-                  <Gegeven
-                    label="nachten"
-                    waarde={eindbestemming.nachten === null ? "—" : String(eindbestemming.nachten)}
-                  />
-                </dl>
-                {eindbestemming.opmerking !== null && (
-                  <p className="mt-3 text-sm text-slate">{eindbestemming.opmerking}</p>
-                )}
-              </>
-            )}
-          </Kaart>
-
-          <WeerKaart weer={weer} onNaarInstellingen={() => gaNaar("instellingen")} />
-        </div>
-
-        <div className="space-y-4">
-          <RouteKaart route={route} onNaarOnderweg={() => gaNaar("onderweg")} />
-        </div>
-      </div>
     </div>
   );
 }
@@ -236,7 +191,7 @@ function VertrekstatusKaart({
   vereisten: Requirement[];
   eindbestemming: Destination | null;
   landen: string[];
-  gaNaar: (tab: Tab) => void;
+  gaNaar: (tab: Tab, subtab?: VoorbereidingSubtab) => void;
 }) {
   const vereistenAfgevinkt = vereisten.filter((item) => item.afgevinkt).length;
   const vereistenPercentage =
@@ -255,7 +210,7 @@ function VertrekstatusKaart({
               : `verplichte spullen voor ${landen.length} landen`,
       klaar: eindbestemming !== null && landen.length > 0,
       kritiek: eindbestemming === null,
-      onClick: () => gaNaar(eindbestemming === null ? "instellingen" : "onderweg"),
+      onClick: () => gaNaar(eindbestemming === null ? "instellingen" : "heenreis"),
     },
     {
       label: "Documenten",
@@ -269,7 +224,7 @@ function VertrekstatusKaart({
               : "alles op orde",
       klaar: documenten.ontbreekt === 0 && documenten.letOp === 0,
       kritiek: documenten.ontbreekt > 0,
-      onClick: () => gaNaar("documenten"),
+      onClick: () => gaNaar("voorbereiding", "documenten"),
     },
     {
       label: "Inpaklijsten",
@@ -280,7 +235,7 @@ function VertrekstatusKaart({
       klaar: inpaklijsten.lijsten > 0 && inpaklijsten.percentage === 100,
       kritiek: false,
       percentage: inpaklijsten.lijsten === 0 ? undefined : inpaklijsten.percentage,
-      onClick: () => gaNaar("inpaklijst"),
+      onClick: () => gaNaar("voorbereiding", "inpaklijst"),
     },
     {
       label: "Taken",
@@ -291,7 +246,7 @@ function VertrekstatusKaart({
       klaar: taken.lijsten > 0 && taken.percentage === 100,
       kritiek: false,
       percentage: taken.lijsten === 0 ? undefined : taken.percentage,
-      onClick: () => gaNaar("taken"),
+      onClick: () => gaNaar("voorbereiding", "taken"),
     },
     {
       label: "Reisdocumenten",
@@ -302,7 +257,7 @@ function VertrekstatusKaart({
       klaar: vereisten.length === 0 || vereistenAfgevinkt === vereisten.length,
       kritiek: false,
       percentage: vereisten.length === 0 ? undefined : vereistenPercentage,
-      onClick: () => gaNaar("onderweg"),
+      onClick: () => gaNaar("voorbereiding", "reisdocumenten"),
     },
   ];
 
@@ -339,233 +294,6 @@ function VertrekstatusKaart({
         ))}
       </ul>
     </Kaart>
-  );
-}
-
-/** Weersverwachting voor de bestemming en voor thuis, naast elkaar. */
-function WeerKaart({
-  weer,
-  onNaarInstellingen,
-}: {
-  weer: WeerAntwoord | null;
-  onNaarInstellingen: () => void;
-}) {
-  if (weer === null) {
-    return (
-      <Kaart>
-        <KaartKop>Weer</KaartKop>
-        <p className="label-mono py-4 text-center text-slate" role="status">
-          Verwachting ophalen
-        </p>
-      </Kaart>
-    );
-  }
-
-  const reeksen = [weer.bestemming, weer.thuis].filter((r): r is WeerReeks => r !== null);
-  // Wat er mist, met de reden erbij. Eén plaats kan lukken en de andere niet.
-  const missend = [
-    weer.bestemming === null ? { wat: "de bestemming", reden: weer.bestemmingReden } : null,
-    weer.thuis === null ? { wat: "thuis", reden: weer.thuisReden } : null,
-  ].filter((m): m is { wat: string; reden: string } => m !== null);
-
-  if (reeksen.length === 0) {
-    return (
-      <Kaart>
-        <KaartKop>Weer</KaartKop>
-        <p className="text-sm text-slate">
-          {REDEN_TEKST[weer.reden] ?? "Geen verwachting beschikbaar."}
-        </p>
-        {weer.reden === "geen-thuisplaats" && (
-          <div className="mt-3">
-            <Knop onClick={onNaarInstellingen}>Naar instellingen</Knop>
-          </div>
-        )}
-      </Kaart>
-    );
-  }
-
-  const dektVerblijf = reeksen.some((reeks) => reeks.dektVerblijf);
-
-  return (
-    <Kaart>
-      <KaartKop
-        extra={
-          <span className="text-xs text-slate">
-            {dektVerblijf ? "tijdens het verblijf" : "komende week"}
-          </span>
-        }
-      >
-        Weer
-      </KaartKop>
-
-      {!dektVerblijf && (
-        <p className="mb-3 text-xs text-slate">
-          De reis ligt verder weg dan de verwachting reikt. Dit is het weer van nu.
-        </p>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {reeksen.map((reeks) => (
-          <WeerKolom key={reeks.plaats} reeks={reeks} />
-        ))}
-      </div>
-
-      {/* Niet stil laten: zeg welke plaats mist en waarom. */}
-      {missend.length > 0 && (
-        <ul className="mt-3 space-y-1 border-t border-slate/12 pt-3">
-          {missend.map((mist) => (
-            <li key={mist.wat} className="text-xs text-slate">
-              Geen verwachting voor {mist.wat} — {REDEN_KORT[mist.reden] ?? mist.reden}.
-            </li>
-          ))}
-        </ul>
-      )}
-    </Kaart>
-  );
-}
-
-function WeerKolom({ reeks }: { reeks: WeerReeks }) {
-  // Het gemiddelde over de reeks geeft een beter beeld dan één dag.
-  const gemiddeldeMax = gemiddelde(reeks.dagen.map((dag) => dag.maxTemp));
-  const gemiddeldeMin = gemiddelde(reeks.dagen.map((dag) => dag.minTemp));
-  const hoogsteWind = maximum(reeks.dagen.map((dag) => dag.windKmh));
-  const hoogsteRegen = maximum(reeks.dagen.map((dag) => dag.regenkans));
-
-  return (
-    <div className="rounded-xl bg-canvas px-3 py-3">
-      <p className="label-mono text-slate">{reeks.plaats}</p>
-      <p className="mt-1 font-mono text-2xl font-semibold text-ink">
-        {gemiddeldeMax === null ? "—" : `${Math.round(gemiddeldeMax)}°`}
-      </p>
-      <dl className="mt-2 space-y-0.5 text-xs text-slate">
-        <Regel
-          label="nacht"
-          waarde={gemiddeldeMin === null ? "—" : `${Math.round(gemiddeldeMin)}°`}
-        />
-        <Regel label="wind" waarde={hoogsteWind === null ? "—" : `${Math.round(hoogsteWind)} km/u`} />
-        <Regel
-          label="regen"
-          waarde={hoogsteRegen === null ? "—" : `${Math.round(hoogsteRegen)}%`}
-        />
-      </dl>
-
-      {/* De losse dagen, zodat je ziet of het één natte dag is of de hele week. */}
-      <ul className="mt-3 flex gap-1 overflow-x-auto pb-1">
-        {reeks.dagen.map((dag) => (
-          <li key={dag.datum} className="shrink-0 text-center">
-            <span className="label-mono block text-slate/70">{dagAfkorting(dag.datum)}</span>
-            <span className="mt-0.5 block font-mono text-xs font-semibold text-ink">
-              {dag.maxTemp === null ? "—" : Math.round(dag.maxTemp)}
-            </span>
-            <span
-              aria-hidden="true"
-              className="mx-auto mt-1 block w-4 rounded-full bg-navy/15"
-              style={{ height: `${Math.max(2, Math.round((dag.regenkans ?? 0) / 8))}px` }}
-              title={`${dag.regenkans ?? 0}% regenkans`}
-            />
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function Regel({ label, waarde }: { label: string; waarde: string }) {
-  return (
-    <div className="flex justify-between">
-      <dt>{label}</dt>
-      <dd className="font-mono">{waarde}</dd>
-    </div>
-  );
-}
-
-/** Samenvatting van de route: thuis via de overnachtingen naar de bestemming. */
-function RouteKaart({
-  route,
-  onNaarOnderweg,
-}: {
-  route: RouteAntwoord | null;
-  onNaarOnderweg: () => void;
-}) {
-  if (route === null) {
-    return (
-      <Kaart>
-        <KaartKop>Route</KaartKop>
-        <p className="label-mono py-4 text-center text-slate" role="status">
-          Route berekenen
-        </p>
-      </Kaart>
-    );
-  }
-
-  if (route.route === null) {
-    return (
-      <Kaart>
-        <KaartKop>Route</KaartKop>
-        <p className="text-sm text-slate">
-          {REDEN_TEKST[route.reden] ?? "Geen route beschikbaar."}
-        </p>
-      </Kaart>
-    );
-  }
-
-  return (
-    <Kaart>
-      <KaartKop
-        extra={
-          <span className="text-xs text-slate">
-            {!route.onderweg
-              ? "in één keer"
-              : `via ${route.onderweg} ${route.onderweg === 1 ? "tussenstop" : "tussenstops"}`}
-          </span>
-        }
-      >
-        Route
-      </KaartKop>
-
-      <dl className="grid grid-cols-2 gap-3">
-        <div>
-          <dt className="label-mono text-slate">afstand</dt>
-          <dd className="mt-0.5 font-mono text-lg font-semibold text-ink">
-            {afstand(route.route.totaalAfstandKm)}
-          </dd>
-        </div>
-        <div>
-          <dt className="label-mono text-slate">rijtijd</dt>
-          <dd className="mt-0.5 font-mono text-lg font-semibold text-ink">
-            {rijtijd(route.route.totaalRijtijdMin)}
-          </dd>
-        </div>
-      </dl>
-
-      <ol className="mt-3 space-y-1.5 border-t border-slate/12 pt-3">
-        {route.route.etappes.map((etappe, index) => (
-          <li key={index} className="flex items-baseline gap-2 text-sm">
-            <span className="min-w-0 flex-1 truncate text-ink">
-              {etappe.vanaf} <span className="text-slate">→</span> {etappe.naar}
-            </span>
-            <span className="shrink-0 font-mono text-xs text-slate">
-              {afstand(etappe.afstandKm)} · {rijtijd(etappe.rijtijdMin)}
-            </span>
-          </li>
-        ))}
-      </ol>
-
-      <div className="mt-3">
-        <Knop soort="stil" onClick={onNaarOnderweg}>
-          Naar onderweg
-        </Knop>
-      </div>
-    </Kaart>
-  );
-}
-
-function Gegeven({ label, waarde }: { label: string; waarde: string }) {
-  return (
-    <div>
-      <dt className="label-mono text-slate">{label}</dt>
-      <dd className="mt-0.5 font-mono text-sm font-semibold text-ink">{waarde}</dd>
-    </div>
   );
 }
 
@@ -613,23 +341,4 @@ function StatusRegel({
       </span>
     </button>
   );
-}
-
-// --- Rekenhulp -------------------------------------------------------------
-
-function gemiddelde(waarden: (number | null)[]): number | null {
-  const echte = waarden.filter((waarde): waarde is number => waarde !== null);
-  if (echte.length === 0) return null;
-  return echte.reduce((som, waarde) => som + waarde, 0) / echte.length;
-}
-
-function maximum(waarden: (number | null)[]): number | null {
-  const echte = waarden.filter((waarde): waarde is number => waarde !== null);
-  return echte.length === 0 ? null : Math.max(...echte);
-}
-
-const DAG_AFKORTING = new Intl.DateTimeFormat("nl-NL", { weekday: "short" });
-
-function dagAfkorting(isoDatum: string): string {
-  return DAG_AFKORTING.format(new Date(`${isoDatum}T12:00:00`)).replace(".", "");
 }

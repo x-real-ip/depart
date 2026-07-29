@@ -590,6 +590,13 @@ export const api = {
     verkeer: (tripId: string) =>
       verzoek("GET", `/api/trips/${tripId}/verkeer`) as Promise<VerkeerAntwoord>,
     tol: (tripId: string) => verzoek("GET", `/api/trips/${tripId}/tol`) as Promise<TolAntwoord>,
+    /** Zelfde soort gegevens als route/verkeer/tol, maar dan voor de terugreis (omgekeerde route). */
+    terugreisRoute: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/terugreis/route`) as Promise<RouteAntwoord>,
+    terugreisVerkeer: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/terugreis/verkeer`) as Promise<VerkeerAntwoord>,
+    terugreisTol: (tripId: string) =>
+      verzoek("GET", `/api/trips/${tripId}/terugreis/tol`) as Promise<TolAntwoord>,
   },
 
   /** Adres-autocomplete voor thuisadres, bestemming en overnachtingen. */
