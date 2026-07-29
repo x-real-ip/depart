@@ -478,20 +478,34 @@ export function Taken({
                     zichtbaar.map((item) => (
                         <li
                           key={item.id}
-                          draggable
-                          onDragStart={() => setGesleept(item.id)}
-                          onDragEnd={() => setGesleept(null)}
-                          onDragOver={(event) => event.preventDefault()}
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            if (gesleept !== null) void verplaatsItem(gesleept, item.id);
-                            setGesleept(null);
-                          }}
+                          data-item-id={item.id}
                           className={`flex items-center gap-3 px-4 py-3 ${
                             gesleept === item.id ? "opacity-45" : ""
                           }`}
                         >
-                          <span aria-hidden="true" className="shrink-0 cursor-grab text-slate">
+                          {/* Pointer Events in plaats van native HTML5 drag-and-drop:
+                              dat laatste vuurt geen enkel event op een touchscreen. */}
+                          <span
+                            aria-hidden="true"
+                            className="shrink-0 touch-none cursor-grab px-1 py-1 text-slate select-none"
+                            onPointerDown={(event) => {
+                              event.currentTarget.setPointerCapture(event.pointerId);
+                              setGesleept(item.id);
+                            }}
+                            onPointerUp={(event) => {
+                              const gesleeptId = gesleept;
+                              setGesleept(null);
+                              if (gesleeptId === null) return;
+                              const doel = document
+                                .elementFromPoint(event.clientX, event.clientY)
+                                ?.closest<HTMLElement>("li[data-item-id]");
+                              const doelId = doel?.dataset["itemId"];
+                              if (doelId !== undefined && doelId !== gesleeptId) {
+                                void verplaatsItem(gesleeptId, doelId);
+                              }
+                            }}
+                            onPointerCancel={() => setGesleept(null)}
+                          >
                             ⠿
                           </span>
                           <span className="min-w-0 flex-1 truncate text-sm text-ink">
