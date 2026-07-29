@@ -243,40 +243,51 @@ function BestemmingRegel({
 
   return (
     <div className="flex items-start gap-3">
-      <span
-        aria-hidden="true"
-        className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold ${
-          bestemming.nachten !== null ? "bg-forest text-white" : "bg-navy text-canvas"
-        }`}
+      {/* De hele bestemming is de bewerk-knop — net als een item in de
+          inpaklijst of takenlijst is dit de voor de hand liggende plek om te
+          tikken, niet een los "Bewerk"-linkje dat je makkelijk over het
+          hoofd ziet. */}
+      <button
+        type="button"
+        onClick={onBewerk}
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-lg py-0.5 text-left transition-colors hover:bg-canvas"
+        aria-label={`${bestemming.naam ?? bestemming.plaats} bewerken`}
       >
-        {volgnummer}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-semibold text-ink">
-          {bestemming.naam ?? bestemming.plaats}
-          {laatste && (
-            <span className="label-mono rounded-full bg-navy/10 px-2 py-0.5 text-navy">
-              eindbestemming
-            </span>
-          )}
-          {bestemming.nachten !== null && (
-            <span className="label-mono rounded-full bg-forest/12 px-2 py-0.5 text-forest">
-              {bestemming.nachten === 1 ? "1 nacht" : `${bestemming.nachten} nachten`}
-            </span>
-          )}
-        </p>
-        {(heeftNaam || landRegio !== "") && (
-          <p className="mt-0.5 truncate text-xs text-slate">
-            {[heeftNaam ? bestemming.plaats : null, landRegio || null].filter(Boolean).join(" — ")}
+        <span
+          aria-hidden="true"
+          className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold ${
+            bestemming.nachten !== null ? "bg-forest text-white" : "bg-navy text-canvas"
+          }`}
+        >
+          {volgnummer}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-semibold text-ink">
+            {bestemming.naam ?? bestemming.plaats}
+            {laatste && (
+              <span className="label-mono rounded-full bg-navy/10 px-2 py-0.5 text-navy">
+                eindbestemming
+              </span>
+            )}
+            {bestemming.nachten !== null && (
+              <span className="label-mono rounded-full bg-forest/12 px-2 py-0.5 text-forest">
+                {bestemming.nachten === 1 ? "1 nacht" : `${bestemming.nachten} nachten`}
+              </span>
+            )}
           </p>
-        )}
-        {bestemming.adres !== null && (
-          <p className="mt-0.5 truncate text-xs text-slate">{bestemming.adres}</p>
-        )}
-        {bestemming.opmerking !== null && (
-          <p className="mt-0.5 text-xs text-slate">{bestemming.opmerking}</p>
-        )}
-      </div>
+          {(heeftNaam || landRegio !== "") && (
+            <p className="mt-0.5 truncate text-xs text-slate">
+              {[heeftNaam ? bestemming.plaats : null, landRegio || null].filter(Boolean).join(" — ")}
+            </p>
+          )}
+          {bestemming.adres !== null && (
+            <p className="mt-0.5 truncate text-xs text-slate">{bestemming.adres}</p>
+          )}
+          {bestemming.opmerking !== null && (
+            <p className="mt-0.5 text-xs text-slate">{bestemming.opmerking}</p>
+          )}
+        </div>
+      </button>
       <span className="shrink-0 text-right font-mono text-xs text-ink">
         {bestemming.incheckdatum !== null ? (
           <>
@@ -287,24 +298,14 @@ function BestemmingRegel({
           (bestemming.inchecktijd ?? "—")
         )}
       </span>
-      <div className="flex shrink-0 flex-col gap-0.5">
-        <button
-          type="button"
-          onClick={onBewerk}
-          className="rounded px-1.5 py-0.5 text-xs text-slate hover:bg-canvas hover:text-ink"
-          aria-label={`${bestemming.naam ?? bestemming.plaats} bewerken`}
-        >
-          Bewerk
-        </button>
-        <button
-          type="button"
-          onClick={onVerwijder}
-          className="rounded px-1.5 py-0.5 text-xs text-slate hover:bg-alert/8 hover:text-alert"
-          aria-label={`${bestemming.naam ?? bestemming.plaats} verwijderen`}
-        >
-          Weg
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onVerwijder}
+        className="shrink-0 self-start rounded px-1.5 py-0.5 text-xs text-slate hover:bg-alert/8 hover:text-alert"
+        aria-label={`${bestemming.naam ?? bestemming.plaats} verwijderen`}
+      >
+        Weg
+      </button>
       {/* Verplaatsen met het toetsenbord, voor wie niet sleept. */}
       <div className="flex shrink-0 flex-col gap-0.5">
         <button
