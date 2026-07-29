@@ -98,11 +98,10 @@ export function Inpaklijst({
 
   /**
    * Items gegroepeerd per categorie, met "Overig" voor items zonder categorie —
-   * altijd als laatste groep, ongeacht wanneer die items zijn toegevoegd.
-   * Categorieën staan op volgorde van eerste voorkomen in de lijst, niet
-   * alfabetisch. Binnen elke groep zakken afgevinkte items naar onderen; net
-   * als voorheen is sort() stabiel, dus een item komt bij het uitvinken terug
-   * op zijn oude plek binnen de groep.
+   * altijd als laatste groep. De genoemde categorieën staan op alfabet.
+   * Binnen elke groep zakken afgevinkte items naar onderen; net als voorheen
+   * is sort() stabiel, dus een item komt bij het uitvinken terug op zijn
+   * oude plek binnen de groep.
    */
   const groepen = useMemo(() => {
     const perCategorie = new Map<string, PackItem[]>();
@@ -116,18 +115,15 @@ export function Inpaklijst({
       lijst.sort((a, b) => Number(a.afgevinkt) - Number(b.afgevinkt));
     }
 
-    const genoemd = [...perCategorie.keys()].filter((naam) => naam !== "");
-    genoemd.sort((a, b) => {
-      const indexA = zichtbaar.findIndex((item) => (item.categorie?.trim() ?? "") === a);
-      const indexB = zichtbaar.findIndex((item) => (item.categorie?.trim() ?? "") === b);
-      return indexA - indexB;
-    });
+    const genoemd = [...perCategorie.keys()]
+      .filter((naam) => naam !== "")
+      .sort((a, b) => a.localeCompare(b, "nl"));
 
     const resultaat = genoemd.map((naam) => ({ naam, items: perCategorie.get(naam)! }));
     const overig = perCategorie.get("");
     if (overig !== undefined) resultaat.push({ naam: "Overig", items: overig });
     return resultaat;
-  }, [gefilterd, zichtbaar]);
+  }, [gefilterd]);
 
   // Geen enkel item heeft een categorie: dan geen kopjes tonen, gewoon de
   // platte lijst zoals voorheen — categorieën zijn opt-in, niet verplicht.
