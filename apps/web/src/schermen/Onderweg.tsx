@@ -142,6 +142,33 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
     };
   }, [trip.id]);
 
+  // Stille achtervang: zodra de berekende route klaar is en afwijkt van wat
+  // er in de reis staat, wordt die meteen overgenomen — zonder knop. Zo
+  // heeft het overzicht altijd iets bruikbaars, ook wanneer de berekening
+  // een keer niet lukt (geen internet, dienst uitgeschakeld).
+  useEffect(() => {
+    if (route?.route == null) return;
+    if (
+      route.route.totaalAfstandKm === trip.afstandKm &&
+      route.route.totaalRijtijdMin === trip.rijtijdMin
+    ) {
+      return;
+    }
+    void api.reisinfo.routeOvernemen(trip.id).then((resultaat) => {
+      if (resultaat.overgenomen) onTripGewijzigd();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route, trip.id, trip.afstandKm, trip.rijtijdMin]);
+
+  // Zelfde soort achtervang voor de tolschatting.
+  useEffect(() => {
+    if (tol?.schatting == null) return;
+    const afgerond = Math.round(tol.schatting.totaalEUR);
+    if (afgerond === trip.tolKosten) return;
+    void api.trips.werkBij(trip.id, { tolKosten: afgerond }).then(() => onTripGewijzigd());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tol, trip.id, trip.tolKosten]);
+
   /**
    * Na een wijziging in de bestemmingenlijst (via het gedeelde component) de
    * route herberekenen én onze eigen kopie van de lijst verversen — die
@@ -200,15 +227,17 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
     <div className="space-y-4">
       {fout !== null && <Melding tekst={fout} onSluit={() => setFout(null)} />}
 
-      {/* Afstand, rijtijd en tolkosten bovenaan. */}
+      {/* Afstand, rijtijd en tolkosten bovenaan — allemaal automatisch
+          berekend, niets om zelf in te vullen. trip.afstandKm/rijtijdMin/
+          tolKosten zijn alleen nog een achtervang voor als de berekening
+          een keer niet lukt; die houdt de app zelf stil bijgewerkt
+          (zie de effects hieronder). */}
       <Kaart>
         <KaartKop
           extra={
             route?.route != null ? (
-              <span className="text-xs text-slate">volgens de route</span>
-            ) : (
-              <span className="text-xs text-slate">eigen invoer</span>
-            )
+              <span className="text-xs text-slate">berekend</span>
+            ) : undefined
           }
         >
           De rit
@@ -229,42 +258,13 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
           <div>
             <dt className="label-mono text-slate">tol</dt>
             <dd className="mt-0.5 font-mono text-lg font-semibold text-ink">
-              {bedrag(trip.tolKosten)}
+              {bedrag(tol?.schatting?.totaalEUR ?? trip.tolKosten)}
             </dd>
           </div>
         </dl>
 
-        {/* De berekende waarden kunnen afwijken van wat je zelf invulde. */}
-        {route?.route != null &&
-          (route.route.totaalAfstandKm !== trip.afstandKm ||
-            route.route.totaalRijtijdMin !== trip.rijtijdMin) && (
-            <div className="mt-3 border-t border-slate/12 pt-3">
-              <p className="text-xs text-slate">
-                Je eigen invoer: {afstand(trip.afstandKm)} en {rijtijd(trip.rijtijdMin)}. Het
-                overzicht gebruikt de route.
-              </p>
-              <div className="mt-2">
-                <Knop
-                  disabled={bezig}
-                  onClick={() =>
-                    void metFout(async () => {
-                      const resultaat = await api.reisinfo.routeOvernemen(trip.id);
-                      if (!resultaat.overgenomen) {
-                        setFout(REDEN_TEKST[resultaat.reden] ?? "Overnemen lukte niet.");
-                        return;
-                      }
-                      onTripGewijzigd();
-                    })
-                  }
-                >
-                  Neem de route over
-                </Knop>
-              </div>
-            </div>
-          )}
-
         {/* Grove schatting van de tolkosten, op basis van welke stukken van
-            de route tolweg zijn — geen prijsopgave, wel een startpunt. */}
+            de route tolweg zijn — geen prijsopgave, wel een indicatie. */}
         {tol?.reden === "ok" && tol.schatting !== null && (
           <div className="mt-3 border-t border-slate/12 pt-3">
             <p className="label-mono mb-1.5 text-slate">tol, geschat</p>
@@ -294,23 +294,6 @@ export function Onderweg({ trip, onTripGewijzigd }: { trip: Trip; onTripGewijzig
             <p className="mt-1.5 text-xs text-slate">
               Een schatting op basis van gemiddelde tarieven, geen prijsopgave.
             </p>
-            {Math.round(tol.schatting.totaalEUR) !== trip.tolKosten && (
-              <div className="mt-2">
-                <Knop
-                  disabled={bezig}
-                  onClick={() =>
-                    void metFout(async () => {
-                      await api.trips.werkBij(trip.id, {
-                        tolKosten: Math.round(tol.schatting!.totaalEUR),
-                      });
-                      onTripGewijzigd();
-                    })
-                  }
-                >
-                  Vul in bij tolkosten
-                </Knop>
-              </div>
-            )}
           </div>
         )}
       </Kaart>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AdresVeld } from "../components/AdresVeld.tsx";
 import { Bestemmingen } from "../components/Bestemmingen.tsx";
 import {
@@ -13,12 +13,19 @@ import {
 import { api, type TripMetReizigers } from "../lib/api.ts";
 import { BEKENDE_LANDEN } from "../lib/format.ts";
 
+/** Hoe lang na de laatste toets/keuze er pas bewaard wordt. */
+const AUTOSAVE_VERTRAGING_MS = 700;
+
 /**
  * Reis bewerken, reizigers beheren, reis verwijderen met bevestiging.
  *
  * Eerst alles wat bij vertrek hoort (De reis, Vertrek), dan de bestemmingen —
  * in die volgorde vul je een reis ook echt in: waar het begint, dan waar het
  * naartoe gaat, eventueel in meerdere etappes.
+ *
+ * Elk veld hier bewaart zichzelf: geen aparte knop, geen twijfel of een
+ * wijziging al is opgeslagen. Afstand, rijtijd en tolkosten staan er expres
+ * niet meer bij — die berekent de app zelf, op het tabblad Onderweg.
  */
 export function Instellingen({
   trip,
@@ -44,17 +51,13 @@ export function Instellingen({
   const thuisGeverifieerd =
     thuisCoordVers !== null || (thuisAdres === (trip.thuisAdres ?? "") && trip.thuisAdresGeverifieerd);
 
-  const [afstandKm, setAfstandKm] = useState(trip.afstandKm?.toString() ?? "");
-  const [rijtijdMin, setRijtijdMin] = useState(trip.rijtijdMin?.toString() ?? "");
-  const [tolKosten, setTolKosten] = useState(trip.tolKosten?.toString() ?? "");
-
   const [nieuweReiziger, setNieuweReiziger] = useState("");
   const [nieuwGeboortejaar, setNieuwGeboortejaar] = useState("");
   const [teVerwijderenReiziger, setTeVerwijderenReiziger] = useState<string | null>(null);
   const [vraagVerwijderen, setVraagVerwijderen] = useState(false);
 
   const [fout, setFout] = useState<string | null>(null);
-  const [bewaard, setBewaard] = useState(false);
+  const [opgeslagen, setOpgeslagen] = useState(false);
   const [bezig, setBezig] = useState(false);
 
   async function metFout(werk: () => Promise<void>): Promise<void> {
@@ -69,14 +72,58 @@ export function Instellingen({
     }
   }
 
-  function getal(waarde: string): number | null {
-    const opgeschoond = waarde.replace(",", ".").trim();
-    return opgeschoond === "" ? null : Number(opgeschoond);
-  }
+  // Autosave: elke wijziging aan een van deze velden bewaart zichzelf, een
+  // fractie van een seconde nadat je stopt met typen of een keuze maakt.
+  // Bewust één en dezelfde weg voor elk veld — geen knop hier, geen andere
+  // daar. De eerste render (bij het openen van dit scherm) slaat niets op,
+  // anders zou elke reis meteen een overbodige aanroep krijgen.
+  const eersteRender = useRef(true);
+  useEffect(() => {
+    if (eersteRender.current) {
+      eersteRender.current = false;
+      return;
+    }
+    if (naam.trim() === "") return;
+
+    const timeout = window.setTimeout(() => {
+      void metFout(async () => {
+        await api.trips.werkBij(trip.id, {
+          naam: naam.trim(),
+          vertrekdatum,
+          terugdatum,
+          thuisplaats: thuisplaats.trim() === "" ? null : thuisplaats.trim(),
+          thuisland: thuisland.trim() === "" ? null : thuisland.trim(),
+          thuisAdres: thuisAdres.trim() === "" ? null : thuisAdres.trim(),
+          // Alleen meesturen als er in deze sessie echt een nieuwe suggestie
+          // gekozen is — anders blijven bestaande coördinaten gewoon staan
+          // (of vervallen ze, als het adres wél veranderd is zonder nieuwe
+          // keuze; dat regelt de api zelf).
+          thuisLat: thuisCoordVers?.lat,
+          thuisLon: thuisCoordVers?.lon,
+        });
+        onBijgewerkt();
+        setOpgeslagen(true);
+        window.setTimeout(() => setOpgeslagen(false), 2000);
+      });
+    }, AUTOSAVE_VERTRAGING_MS);
+
+    return () => window.clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [naam, vertrekdatum, terugdatum, thuisplaats, thuisland, thuisAdres, thuisCoordVers]);
 
   return (
     <div className="space-y-4">
       {fout !== null && <Melding tekst={fout} onSluit={() => setFout(null)} />}
+
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display text-lg font-extrabold text-ink">Instellingen</h1>
+        {/* Stille bevestiging, geen bewaarknop: elk veld slaat zichzelf op. */}
+        {opgeslagen && (
+          <span className="label-mono shrink-0 text-forest" role="status">
+            opgeslagen
+          </span>
+        )}
+      </div>
 
       <Kaart className="space-y-3">
         <KaartKop>De reis</KaartKop>
@@ -160,80 +207,8 @@ export function Instellingen({
         />
       </Kaart>
 
-      <div className="flex items-center gap-3">
-        <Knop
-          soort="primair"
-          breed
-          disabled={bezig || naam.trim() === ""}
-          onClick={() =>
-            void metFout(async () => {
-              await api.trips.werkBij(trip.id, {
-                naam: naam.trim(),
-                vertrekdatum,
-                terugdatum,
-                thuisplaats: thuisplaats.trim() === "" ? null : thuisplaats.trim(),
-                thuisland: thuisland.trim() === "" ? null : thuisland.trim(),
-                thuisAdres: thuisAdres.trim() === "" ? null : thuisAdres.trim(),
-                // Alleen meesturen als er in deze sessie echt een nieuwe
-                // suggestie gekozen is — anders blijven bestaande coördinaten
-                // gewoon staan (of vervallen ze, als het adres wél veranderd
-                // is zonder nieuwe keuze; dat regelt de api zelf).
-                thuisLat: thuisCoordVers?.lat,
-                thuisLon: thuisCoordVers?.lon,
-                afstandKm: getal(afstandKm),
-                rijtijdMin: getal(rijtijdMin),
-                tolKosten: getal(tolKosten),
-              });
-              onBijgewerkt();
-              setBewaard(true);
-              window.setTimeout(() => setBewaard(false), 2500);
-            })
-          }
-        >
-          Bewaar de wijzigingen
-        </Knop>
-        {bewaard && (
-          <span className="label-mono shrink-0 text-forest" role="status">
-            bewaard
-          </span>
-        )}
-      </div>
-
       {/* Bestemmingen: van thuis tot de eindbestemming, zelf toe te voegen. */}
       <Bestemmingen tripId={trip.id} onGewijzigd={onBijgewerkt} />
-
-      <Kaart className="space-y-3">
-        <KaartKop>De rit</KaartKop>
-        <div className="grid grid-cols-3 gap-3">
-          <Veld label="Afstand km">
-            <input
-              className={INVOER_STIJL}
-              inputMode="numeric"
-              value={afstandKm}
-              onChange={(event) => setAfstandKm(event.target.value.replace(/[^\d]/g, ""))}
-            />
-          </Veld>
-          <Veld label="Rijtijd min">
-            <input
-              className={INVOER_STIJL}
-              inputMode="numeric"
-              value={rijtijdMin}
-              onChange={(event) => setRijtijdMin(event.target.value.replace(/[^\d]/g, ""))}
-            />
-          </Veld>
-          <Veld label="Tol euro">
-            <input
-              className={INVOER_STIJL}
-              inputMode="decimal"
-              value={tolKosten}
-              onChange={(event) => setTolKosten(event.target.value.replace(/[^\d,.]/g, ""))}
-            />
-          </Veld>
-        </div>
-        <p className="text-xs text-slate">
-          Vul je zelf niets in, dan gebruikt het overzicht de berekende route.
-        </p>
-      </Kaart>
 
       <Kaart className="space-y-2">
         <KaartKop>Reizigers</KaartKop>
