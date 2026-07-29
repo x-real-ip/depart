@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Bevestiging,
+  IconKnop,
   INVOER_STIJL,
   Kaart,
   Knop,
@@ -45,7 +46,6 @@ export function Taken({
   const [volgordeBewerken, setVolgordeBewerken] = useState(false);
   const [gesleept, setGesleept] = useState<string | null>(null);
   const [zoekterm, setZoekterm] = useState("");
-  const [sorteerAlfabetisch, setSorteerAlfabetisch] = useState(false);
   const [bezig, setBezig] = useState(false);
 
   useEffect(() => {
@@ -88,15 +88,12 @@ export function Taken({
   // Afgevinkte taken zakken naar onderen; de volgorde daarbinnen blijft
   // hetzelfde, dus een taak komt bij het uitvinken terug op zijn oude plek —
   // sort() is stabiel, dus binnen elke groep blijft de bestaande volgorde
-  // (of, met alfabetisch aan, de alfabetische volgorde) behouden. Alleen voor
-  // de gewone weergave: tijdens het slepen (waar `zichtbaar` zelf voor
-  // gebruikt wordt) blijft de echte, opgeslagen volgorde zichtbaar.
-  const weergegeven = useMemo(() => {
-    const basis = sorteerAlfabetisch
-      ? [...gefilterd].sort((a, b) => a.label.localeCompare(b.label, "nl"))
-      : gefilterd;
-    return [...basis].sort((a, b) => Number(a.afgevinkt) - Number(b.afgevinkt));
-  }, [gefilterd, sorteerAlfabetisch]);
+  // behouden. Alleen voor de gewone weergave: tijdens het slepen (waar
+  // `zichtbaar` zelf voor gebruikt wordt) blijft de echte volgorde zichtbaar.
+  const weergegeven = useMemo(
+    () => [...gefilterd].sort((a, b) => Number(a.afgevinkt) - Number(b.afgevinkt)),
+    [gefilterd],
+  );
 
   /** Percentage per lijst, zodat je op de lijstknoppen al ziet welke klaar zijn. */
   const percentagePerLijst = useMemo(() => {
@@ -156,6 +153,31 @@ export function Taken({
 
     // Alleen de zichtbare lijst herordenen; taken van andere lijsten blijven
     // ongemoeid.
+    const vorige = items ?? [];
+    const overigen = vorige.filter((item) => item.taskListId !== actieveLijstId);
+    setItems([...overigen, ...herordend]);
+
+    try {
+      const opgeslagen = await api.taakItems.herorden(
+        actieveLijstId,
+        herordend.map((item) => item.id),
+      );
+      setItems([...overigen, ...opgeslagen]);
+    } catch (error) {
+      setItems(vorige);
+      setFout((error as Error).message);
+    }
+  }
+
+  /**
+   * Zet de lijst eenmalig op alfabet en slaat dat op als de nieuwe volgorde —
+   * geen blijvende modus, daarna sleep je verder vanaf die alfabetische
+   * volgorde net als anders.
+   */
+  async function sorteerAlfabetischNu(): Promise<void> {
+    if (actieveLijstId === null) return;
+    const herordend = [...zichtbaar].sort((a, b) => a.label.localeCompare(b.label, "nl"));
+
     const vorige = items ?? [];
     const overigen = vorige.filter((item) => item.taskListId !== actieveLijstId);
     setItems([...overigen, ...herordend]);
@@ -413,31 +435,39 @@ export function Taken({
                           onChange={(event) => setZoekterm(event.target.value)}
                           aria-label="Zoek in deze lijst"
                         />
-                        <button
-                          type="button"
-                          onClick={() => setSorteerAlfabetisch((huidig) => !huidig)}
-                          aria-pressed={sorteerAlfabetisch}
-                          className={`shrink-0 rounded-lg border px-2.5 py-2 text-xs font-semibold ${
-                            sorteerAlfabetisch
-                              ? "border-navy bg-navy text-canvas"
-                              : "border-slate/25 text-slate hover:border-slate/50 hover:text-ink"
-                          }`}
+                        <IconKnop
+                          onClick={() => void sorteerAlfabetischNu()}
+                          disabled={bezig || zoekterm.trim() !== ""}
+                          label="Sorteer nu alfabetisch"
+                          titel={
+                            zoekterm.trim() !== "" ? "Wis eerst de zoekopdracht" : "Sorteer alfabetisch"
+                          }
                         >
                           A–Z
-                        </button>
+                        </IconKnop>
+                        <IconKnop
+                          onClick={() => setVolgordeBewerken(true)}
+                          disabled={zoekterm.trim() !== ""}
+                          label="Versleep om handmatig te sorteren"
+                          titel={
+                            zoekterm.trim() !== "" ? "Wis eerst de zoekopdracht" : "Handmatig sorteren"
+                          }
+                        >
+                          ⠿
+                        </IconKnop>
                       </div>
                     )}
                     <div className="flex items-center justify-between">
                       <span className="label-mono text-slate">
                         {volgordeBewerken ? "Versleep om te sorteren" : "Taken"}
                       </span>
-                      {(volgordeBewerken || zoekterm.trim() === "") && (
+                      {volgordeBewerken && (
                         <button
                           type="button"
-                          onClick={() => setVolgordeBewerken(!volgordeBewerken)}
+                          onClick={() => setVolgordeBewerken(false)}
                           className="text-xs font-semibold text-slate underline decoration-slate/40 underline-offset-2 hover:text-ink"
                         >
-                          {volgordeBewerken ? "Klaar" : "Volgorde aanpassen"}
+                          Klaar
                         </button>
                       )}
                     </div>

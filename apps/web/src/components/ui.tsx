@@ -65,6 +65,39 @@ export function Knop({
   );
 }
 
+/**
+ * Vierkante icoonknop, bijvoorbeeld naast een zoekbalk — voor acties waar een
+ * los, klein symbool duidelijker is dan een tekstlabel. `children` is het
+ * zichtbare symbool (een letter of teken); `label` is de toegankelijke naam
+ * voor schermlezers, `titel` de hover-tooltip (mag hetzelfde zijn als label).
+ */
+export function IconKnop({
+  children,
+  onClick,
+  label,
+  titel,
+  disabled = false,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  label: string;
+  titel?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={titel ?? label}
+      className="shrink-0 rounded-lg border border-slate/25 px-2.5 py-2 text-sm font-semibold text-slate transition-colors hover:border-slate/50 hover:text-ink disabled:opacity-40 disabled:hover:border-slate/25 disabled:hover:text-slate"
+    >
+      <span aria-hidden="true">{children}</span>
+    </button>
+  );
+}
+
 /** Voortgangsbalk met percentage. De balk zelf is niet interactief. */
 export function VoortgangsBalk({
   percentage,
