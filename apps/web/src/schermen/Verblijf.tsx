@@ -11,6 +11,7 @@ import {
   type WeerAntwoord,
   type WeerReeks,
 } from "../lib/api.ts";
+import { Gerechten } from "./Gerechten.tsx";
 
 /**
  * Hoe het is om er te zijn: de kampeerplek zelf, het weer, wat er in de
@@ -107,6 +108,8 @@ export function Verblijf({
       <WeerKaart weer={weer} onNaarInstellingen={onNaarInstellingen} />
 
       <BezienswaardighedenKaart gegevens={bezienswaardigheden} />
+
+      <Gerechten tripId={trip.id} />
 
       <Noodnummers tripId={trip.id} landen={landen} />
     </div>

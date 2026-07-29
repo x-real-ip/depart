@@ -1,23 +1,21 @@
 import { useState } from "react";
 import type { Traveler } from "../lib/api.ts";
 import { Documenten } from "./Documenten.tsx";
-import { Gerechten } from "./Gerechten.tsx";
 import { Inpaklijst } from "./Inpaklijst.tsx";
 import { Taken } from "./Taken.tsx";
 
-export type VoorbereidingSubtab = "documenten" | "inpaklijst" | "taken" | "gerechten";
+export type VoorbereidingSubtab = "documenten" | "inpaklijst" | "taken";
 
 const SUBTABS: { id: VoorbereidingSubtab; label: string }[] = [
   { id: "documenten", label: "Documenten" },
   { id: "inpaklijst", label: "Inpaklijst" },
   { id: "taken", label: "Taken" },
-  { id: "gerechten", label: "Gerechten" },
 ];
 
 /**
  * Alles wat er vóór vertrek geregeld moet worden, gebundeld onder één tab:
- * documenten, inpakken, losse taken en gerechten. Een eigen rij subtabs erin,
- * zodat het hoofdmenu niet met losse tabs vervuild raakt.
+ * documenten, inpakken en losse taken. Een eigen rij subtabs erin, zodat het
+ * hoofdmenu niet met losse tabs vervuild raakt.
  */
 export function Voorbereiding({
   tripId,
@@ -56,7 +54,6 @@ export function Voorbereiding({
       {subtab === "documenten" && <Documenten tripId={tripId} reizigers={reizigers} />}
       {subtab === "inpaklijst" && <Inpaklijst tripId={tripId} reizigers={reizigers} />}
       {subtab === "taken" && <Taken tripId={tripId} reizigers={reizigers} />}
-      {subtab === "gerechten" && <Gerechten tripId={tripId} />}
     </div>
   );
 }

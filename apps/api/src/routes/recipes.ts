@@ -1,19 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
-import { query, queryOne, transaction } from "../db.js";
-import {
-  toPackItem,
-  toRecipe,
-  toRecipeIngredient,
-  type PackItemRow,
-  type RecipeIngredientRow,
-  type RecipeRow,
-} from "../types.js";
-import { Fields, NotFoundError, ValidationError, pathUuid } from "../validate.js";
+import { query, queryOne } from "../db.js";
+import { toRecipe, toRecipeIngredient, type RecipeIngredientRow, type RecipeRow } from "../types.js";
+import { Fields, NotFoundError, pathUuid } from "../validate.js";
 import { haalTrip } from "./trips.js";
 
 const RECIPE_KOLOMMEN = `id, trip_id, naam`;
 const RECIPE_INGREDIENT_KOLOMMEN = `id, recipe_id, label, volgorde`;
-const PACK_ITEM_KOLOMMEN = `id, trip_id, pack_list_id, label, afgevinkt, volgorde`;
 
 async function haalRecipe(id: string): Promise<RecipeRow> {
   const row = await queryOne<RecipeRow>(`SELECT ${RECIPE_KOLOMMEN} FROM recipe WHERE id = $1`, [
@@ -23,29 +15,7 @@ async function haalRecipe(id: string): Promise<RecipeRow> {
   return row;
 }
 
-async function haalPackListVoorTrip(id: string, tripId: string): Promise<void> {
-  const lijst = await queryOne<{ id: string }>(
-    `SELECT id FROM pack_list WHERE id = $1 AND trip_id = $2`,
-    [id, tripId],
-  );
-  if (!lijst) throw new NotFoundError("Deze inpaklijst bestaat niet bij deze reis");
-}
-
-/** Eerstvolgende vrije volgorde op een inpaklijst — nieuwe items komen achteraan. */
-async function volgendeVolgorde(packListId: string): Promise<number> {
-  const rij = await queryOne<{ volgende: number }>(
-    `SELECT COALESCE(max(volgorde) + 1, 0) AS volgende FROM pack_item WHERE pack_list_id = $1`,
-    [packListId],
-  );
-  return rij?.volgende ?? 0;
-}
-
-/**
- * Gerechten voor op de camping: een naam en een lijst ingrediënten. Los van
- * de inpaklijsten — de verbinding is een actie ("naar-inpaklijst"), geen
- * doorlopende relatie: eenmaal overgezet staan de items op zichzelf, net als
- * bij de standaardlijst of het importeren van een geplakte lijst.
- */
+/** Gerechten voor op de camping: een naam en een lijst ingrediënten. */
 export const recipeRoutes: FastifyPluginAsync = async (app) => {
   app.get("/trips/:tripId/recipes", async (request) => {
     const tripId = pathUuid((request.params as { tripId?: string }).tripId, "tripId");
@@ -89,56 +59,6 @@ export const recipeRoutes: FastifyPluginAsync = async (app) => {
     if (result.rowCount === 0) throw new NotFoundError("Dit gerecht bestaat niet");
     reply.code(204);
     return null;
-  });
-
-  /**
-   * Zet de ingrediënten van dit gerecht op een gekozen inpaklijst. Net als bij
-   * de standaardlijst en het importeren van een geplakte lijst: al op de
-   * lijst staande items (ongeacht hoofdletters) worden overgeslagen, zodat
-   * twee keer klikken geen dubbele boodschappenlijst oplevert.
-   */
-  app.post("/recipes/:id/naar-inpaklijst", async (request) => {
-    const id = pathUuid((request.params as { id?: string }).id);
-    const gerecht = await haalRecipe(id);
-    const fields = new Fields(request.body);
-    const packListId = fields.optionalUuid("packListId");
-    if (packListId === null) throw new ValidationError("packListId is verplicht");
-    await haalPackListVoorTrip(packListId, gerecht.trip_id);
-
-    const ingredienten = await query<RecipeIngredientRow>(
-      `SELECT ${RECIPE_INGREDIENT_KOLOMMEN} FROM recipe_ingredient
-       WHERE recipe_id = $1 ORDER BY volgorde ASC, created_at ASC`,
-      [id],
-    );
-
-    const toegevoegd = await transaction(async (client) => {
-      const bestaand = await client.query<{ label: string }>(
-        `SELECT label FROM pack_item WHERE pack_list_id = $1`,
-        [packListId],
-      );
-      const aanwezig = new Set(bestaand.rows.map((row) => row.label.toLowerCase()));
-      let volgorde = await volgendeVolgorde(packListId);
-
-      const nieuw: PackItemRow[] = [];
-      for (const ingredient of ingredienten.rows) {
-        if (aanwezig.has(ingredient.label.toLowerCase())) continue;
-        aanwezig.add(ingredient.label.toLowerCase());
-        const created = await client.query<PackItemRow>(
-          `INSERT INTO pack_item (trip_id, pack_list_id, label, volgorde)
-           VALUES ($1, $2, $3, $4) RETURNING ${PACK_ITEM_KOLOMMEN}`,
-          [gerecht.trip_id, packListId, ingredient.label, volgorde],
-        );
-        volgorde += 1;
-        nieuw.push(created.rows[0]!);
-      }
-      return nieuw;
-    });
-
-    return {
-      toegevoegd: toegevoegd.length,
-      overgeslagen: ingredienten.rows.length - toegevoegd.length,
-      items: toegevoegd.map(toPackItem),
-    };
   });
 
   // --- Ingrediënten ---------------------------------------------------------

@@ -3,28 +3,22 @@ import {
   Bevestiging,
   INVOER_STIJL,
   Kaart,
+  KaartKop,
   Knop,
   Laden,
   LegeStaat,
   Melding,
   Veld,
 } from "../components/ui.tsx";
-import { api, type PackList, type Recipe, type RecipeIngredient } from "../lib/api.ts";
-
-/** Waarde in de lijstkeuze die "maak een nieuwe lijst" betekent, in plaats van een echt id. */
-const NIEUWE_LIJST = "__nieuw__";
+import { api, type Recipe, type RecipeIngredient } from "../lib/api.ts";
 
 /**
- * Gerechten voor op de camping: een naam en een vaste ingrediëntenlijst. De
- * ingrediënten zelf zijn geen boodschappenlijst — dat wordt een inpaklijst
- * pas als je op "Zet op een lijst" drukt. Daarna staan de items op zichzelf:
- * wijzig je het gerecht later, dan verandert de inpaklijst niet mee, en
- * andersom.
+ * Gerechten voor op de camping: een naam en een vaste ingrediëntenlijst — zo
+ * weet je van tevoren wat je gaat koken en wat daarvoor nodig is.
  */
 export function Gerechten({ tripId }: { tripId: string }) {
   const [gerechten, setGerechten] = useState<Recipe[] | null>(null);
   const [ingredienten, setIngredienten] = useState<RecipeIngredient[] | null>(null);
-  const [lijsten, setLijsten] = useState<PackList[] | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const [actiefId, setActiefId] = useState<string | null>(null);
   const [nieuwGerechtOpen, setNieuwGerechtOpen] = useState(false);
@@ -33,23 +27,15 @@ export function Gerechten({ tripId }: { tripId: string }) {
   const [naamInvoer, setNaamInvoer] = useState("");
   const [nieuwIngredient, setNieuwIngredient] = useState("");
   const [vraagVerwijderen, setVraagVerwijderen] = useState(false);
-  const [gekozenLijst, setGekozenLijst] = useState("");
-  const [nieuweLijstNaam, setNieuweLijstNaam] = useState("");
-  const [overzetMelding, setOverzetMelding] = useState<string | null>(null);
   const [bezig, setBezig] = useState(false);
 
   useEffect(() => {
     let actueel = true;
-    Promise.all([
-      api.gerechten.lijst(tripId),
-      api.ingredienten.lijst(tripId),
-      api.inpaklijsten.lijst(tripId),
-    ])
-      .then(([recepten, alleIngredienten, packLists]) => {
+    Promise.all([api.gerechten.lijst(tripId), api.ingredienten.lijst(tripId)])
+      .then(([recepten, alleIngredienten]) => {
         if (!actueel) return;
         setGerechten(recepten);
         setIngredienten(alleIngredienten);
-        setLijsten(packLists);
         setActiefId((huidig) => huidig ?? recepten[0]?.id ?? null);
       })
       .catch((error: Error) => {
@@ -94,7 +80,6 @@ export function Gerechten({ tripId }: { tripId: string }) {
       setActiefId(nieuw.id);
       setNieuwGerechtOpen(false);
       setNieuweGerechtNaam("");
-      setOverzetMelding(null);
     });
   }
 
@@ -107,38 +92,13 @@ export function Gerechten({ tripId }: { tripId: string }) {
     });
   }
 
-  async function zetOpLijst(): Promise<void> {
-    if (actiefGerecht === null) return;
-    if (gekozenLijst === "" || (gekozenLijst === NIEUWE_LIJST && nieuweLijstNaam.trim() === "")) {
-      return;
-    }
-    await metFout(async () => {
-      const lijst =
-        gekozenLijst === NIEUWE_LIJST
-          ? await api.inpaklijsten.maak(tripId, nieuweLijstNaam.trim(), null)
-          : (lijsten ?? []).find((l) => l.id === gekozenLijst);
-      if (lijst === undefined) return;
-
-      if (gekozenLijst === NIEUWE_LIJST) {
-        setLijsten([...(lijsten ?? []), lijst]);
-        setGekozenLijst(lijst.id);
-        setNieuweLijstNaam("");
-      }
-
-      const resultaat = await api.gerechten.naarInpaklijst(actiefGerecht.id, lijst.id);
-      setOverzetMelding(
-        resultaat.overgeslagen === 0
-          ? `${resultaat.toegevoegd} ${resultaat.toegevoegd === 1 ? "ingrediënt" : "ingrediënten"} op "${lijst.naam}" gezet.`
-          : `${resultaat.toegevoegd} toegevoegd aan "${lijst.naam}", ${resultaat.overgeslagen} stonden er al op.`,
-      );
-    });
-  }
-
   if (fout !== null && gerechten === null) return <Melding tekst={fout} />;
-  if (gerechten === null || ingredienten === null || lijsten === null) return <Laden />;
+  if (gerechten === null || ingredienten === null) return <Laden />;
 
   return (
     <div className="space-y-4">
+      <KaartKop>Gerechten</KaartKop>
+
       {gerechten.length > 0 && (
         <div
           className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1"
@@ -151,10 +111,7 @@ export function Gerechten({ tripId }: { tripId: string }) {
               type="button"
               role="tab"
               aria-selected={actiefId === gerecht.id}
-              onClick={() => {
-                setActiefId(gerecht.id);
-                setOverzetMelding(null);
-              }}
+              onClick={() => setActiefId(gerecht.id)}
               className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
                 actiefId === gerecht.id ? "bg-amber text-navy" : "bg-white text-slate hover:text-ink"
               }`}
@@ -338,55 +295,6 @@ export function Gerechten({ tripId }: { tripId: string }) {
               </div>
             </Kaart>
 
-            {/* Ingrediënten naar een inpaklijst sturen: een eenmalige actie,
-                daarna staan de items op zichzelf op die lijst. */}
-            {zichtbareIngredienten.length > 0 && (
-              <Kaart className="space-y-3">
-                <h2 className="label-mono text-slate">Zet op een lijst</h2>
-                <Veld label="Inpaklijst">
-                  <select
-                    className={INVOER_STIJL}
-                    value={gekozenLijst}
-                    onChange={(event) => {
-                      setGekozenLijst(event.target.value);
-                      setOverzetMelding(null);
-                    }}
-                  >
-                    <option value="">Kies een lijst…</option>
-                    {lijsten.map((lijst) => (
-                      <option key={lijst.id} value={lijst.id}>
-                        {lijst.naam}
-                      </option>
-                    ))}
-                    <option value={NIEUWE_LIJST}>+ Nieuwe lijst…</option>
-                  </select>
-                </Veld>
-                {gekozenLijst === NIEUWE_LIJST && (
-                  <Veld label="Naam van de nieuwe lijst">
-                    <input
-                      className={INVOER_STIJL}
-                      placeholder="Boodschappen"
-                      value={nieuweLijstNaam}
-                      autoFocus
-                      onChange={(event) => setNieuweLijstNaam(event.target.value)}
-                    />
-                  </Veld>
-                )}
-                <Knop
-                  soort="primair"
-                  disabled={
-                    bezig ||
-                    gekozenLijst === "" ||
-                    (gekozenLijst === NIEUWE_LIJST && nieuweLijstNaam.trim() === "")
-                  }
-                  onClick={zetOpLijst}
-                >
-                  Zet ingrediënten op deze lijst
-                </Knop>
-                {overzetMelding !== null && <p className="text-xs text-slate">{overzetMelding}</p>}
-              </Kaart>
-            )}
-
             {vraagVerwijderen ? (
               <Bevestiging
                 vraag={`Gerecht "${actiefGerecht.naam}" verwijderen?`}
@@ -401,7 +309,6 @@ export function Gerechten({ tripId }: { tripId: string }) {
                       (ingredienten ?? []).filter((i) => i.recipeId !== actiefGerecht.id),
                     );
                     setVraagVerwijderen(false);
-                    setOverzetMelding(null);
                   })
                 }
               />

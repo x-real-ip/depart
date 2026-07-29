@@ -607,7 +607,7 @@ export const api = {
     verwijder: (id: string) => verzoek("DELETE", `/api/contacts/${id}`) as Promise<null>,
   },
 
-  /** Gerechten voor op de camping: een naam en ingrediënten die je naar een inpaklijst kunt sturen. */
+  /** Gerechten voor op de camping: een naam en de ingrediënten die erin gaan. */
   gerechten: {
     lijst: (tripId: string) =>
       verzoek("GET", `/api/trips/${tripId}/recipes`) as Promise<Recipe[]>,
@@ -616,12 +616,6 @@ export const api = {
     werkBij: (id: string, velden: { naam?: string }) =>
       verzoek("PATCH", `/api/recipes/${id}`, velden) as Promise<Recipe>,
     verwijder: (id: string) => verzoek("DELETE", `/api/recipes/${id}`) as Promise<null>,
-    naarInpaklijst: (id: string, packListId: string) =>
-      verzoek("POST", `/api/recipes/${id}/naar-inpaklijst`, { packListId }) as Promise<{
-        toegevoegd: number;
-        overgeslagen: number;
-        items: PackItem[];
-      }>,
   },
 
   ingredienten: {
