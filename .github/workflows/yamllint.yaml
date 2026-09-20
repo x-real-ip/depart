@@ -11,4 +11,4 @@ on:
 
 jobs:
   yamllint:
-    uses: x-real-ip/github-actions/.github/workflows/yamllint.yaml@main
+    uses: x-real-ip/github-actions/.github/workflows/yamllint.yaml@v3
