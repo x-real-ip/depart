@@ -9,7 +9,7 @@ COPY src ./src
 RUN npm run build
 
 # --- Serve ---
-FROM docker.io/library/nginx:1.27-alpine
+FROM docker.io/library/nginx:1.31-alpine
 # De nginx-image vult ${BACKEND_URL} in bij het opstarten via envsubst.
 COPY default.conf.template /etc/nginx/templates/default.conf.template
 # API_TOKEN en APP_TITLE komen bij het opstarten in env.js, niet in de build.
