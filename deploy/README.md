@@ -10,7 +10,7 @@ gitops/
 ├── argocd/apps/depart.yaml            Argo CD Application (namespace tools)
 └── manifests/depart/
     ├── base/
-    │   ├── postgresql/kustomization.yaml   hergebruikt ../../postgres/base
+    │   ├── cluster.yaml                    CloudNativePG-cluster depart-db
     │   ├── configmap.yaml
     │   ├── sealedsecret.yaml
     │   ├── persistentvolume.yaml           documentenvolume (iSCSI, RWO)
@@ -26,7 +26,7 @@ gitops/
 | ------------------ | --------------------------------------------- | ----------------------------------------- |
 | `depart-web`       | nginx met de gebouwde frontend                | geen                                      |
 | `depart-api`       | Fastify, 1 replica, strategy `Recreate`       | `pvc-iscsi-depart-documents` op `/data/documents` |
-| `depart-postgresql`| StatefulSet uit de gedeelde `postgres/base`   | `depart-pv-iscsi-postgresql-db`           |
+| `depart-db`        | CloudNativePG `Cluster` (Postgres 18)         | dynamisch via truenas-csi (`truenas-ssd-iscsi`) |
 
 `depart-web` is het enige onderdeel dat van buiten bereikbaar is, via de
 `private` gateway op `vakantie.lan.stamx.nl`. De api heeft een ClusterIP-service
@@ -93,8 +93,10 @@ worden met mode `0600` weggeschreven. Er is geen wereldleesbare share.
 
 ## Secrets
 
-`depart-secrets` bevat `DATABASE_URL` en `API_TOKEN`, `depart-postgresql-secret`
-bevat `POSTGRES_PASSWORD`. Beide zijn SealedSecrets met scope `cluster-wide`. De
+`depart-secrets` bevat `DATABASE_URL` en `API_TOKEN`, `depart-db-credentials`
+(type `basic-auth`) bevat `username` en `password` van de databasegebruiker. CNPG
+houdt het wachtwoord van de rol `depart` gelijk aan dat secret (`managed.roles`).
+Beide zijn SealedSecrets met scope `cluster-wide`. De
 platte waardes staan nergens in een repo. Een nieuwe waarde zetten:
 
 ```bash
@@ -106,5 +108,5 @@ rm /tmp/w
 Let op: `printf '%s'` en niet `echo`, anders komt er een newline in de waarde
 terecht en klopt het wachtwoord niet meer.
 
-Wijzig je `POSTGRES_PASSWORD`, dan moet `DATABASE_URL` mee: daar staat hetzelfde
-wachtwoord in.
+Wijzig je het wachtwoord in `depart-db-credentials`, dan moet `DATABASE_URL` mee:
+daar staat hetzelfde wachtwoord in. De database draait op `depart-db-rw`.

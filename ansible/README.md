@@ -1,13 +1,16 @@
 # Opslag op TrueNAS
 
-Depart heeft twee volumes op TrueNAS nodig:
+Depart heeft één volume op TrueNAS dat via ansible wordt aangemaakt:
 
 | Volume             | Zvol                                  | Grootte | Waarvoor                                     |
 | ------------------ | ------------------------------------- | ------- | -------------------------------------------- |
-| `depart-db`        | `ssd/containers/k8s/depart-db`        | 5 GiB   | Postgres-data van `depart-postgresql`        |
 | `depart-documents` | `ssd/containers/k8s/depart-documents` | 5 GiB   | Geüploade reisdocumenten (paspoortscans e.d.) |
 
-Beide worden als iSCSI uitgedeeld, want dat is in deze omgeving de gebruikelijke
+De database draait als CloudNativePG-cluster `depart-db`. Die krijgt zijn
+volume dynamisch van truenas-csi (StorageClass `truenas-ssd-iscsi`, onder
+`ssd/containers/csi/iscsi`), dus daarvoor staat er niets in ansible.
+
+Het documentenvolume wordt als iSCSI uitgedeeld, want dat is in deze omgeving de gebruikelijke
 manier: elk bestaand PersistentVolume in de gitops-repo gebruikt
 `freenas-iscsi-manual-csi` met de democratic-csi `node-manual` driver. iSCSI is
 hier ook veiliger dan NFS: het volume is `ReadWriteOnce` en wordt alleen door de
@@ -28,10 +31,9 @@ aan de bestaande variabelenbestanden van die role.
 
 In `roles/truenas/vars/shares.yaml`:
 
-- twee zvols onder `shares.iscsi.zvols` (`depart-db`, `depart-documents`),
-  16K volblocksize, sparse
-- twee targets onder `shares.iscsi.targets` (`depart-db`, `depart-documents`)
-- twee extents onder `shares.iscsi.extents`, die naar de zvols wijzen
+- een zvol onder `shares.iscsi.zvols` (`depart-documents`), 16K volblocksize, sparse
+- een target onder `shares.iscsi.targets` (`depart-documents`)
+- een extent onder `shares.iscsi.extents`, die naar de zvol wijst
 
 De role koppelt targets en extents zelf aan elkaar op naam, dus meer is er niet
 nodig. De portal (`0.0.0.0:3260`) bestaat al en wordt hergebruikt.
@@ -78,8 +80,7 @@ Deze komen terug in `manifests/depart/base/` in de gitops-repo:
 
 ```
 portal: truenas-master.lan.stamx.nl:3260
-iqn:    iqn.2005-10.org.freenas.ctl:depart-db
-        iqn.2005-10.org.freenas.ctl:depart-documents
+iqn:    iqn.2005-10.org.freenas.ctl:depart-documents
 ```
 
 ## Documenten terugzetten uit een snapshot
@@ -104,7 +105,7 @@ tweede zvol, deel die tijdelijk uit en mount hem read-only ergens anders. De
 database blijft dan ongemoeid; het pad in de `document`-tabel verwijst nog naar
 hetzelfde bestand.
 
-Let op: de database heeft een eigen volume (`depart-db`) met een eigen snapshot.
+Let op: de database (CNPG-cluster `depart-db`) heeft een eigen volume met een eigen snapshot.
 Zet je alleen de documenten terug, dan kan de database naar een bestand
 verwijzen dat in die oudere snapshot nog niet bestond. De api geeft dat weer als
 status **ontbreekt** — dat is te herstellen door het document opnieuw te
